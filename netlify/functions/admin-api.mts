@@ -304,6 +304,16 @@ export default async (req: Request, context: Context) => {
         return json({ ok: failed.length === 0, acknowledged: okBoxes.size, failed })
       }
 
+      // ----- 상세페이지용 공개 사진 -----
+      if (id === "images" && method === "POST") {
+        const form = await req.formData()
+        const file = form.get("file")
+        if (!(file instanceof Blob)) return json({ error: "사진 파일이 없습니다." }, 400)
+        if (file.size > 4 * 1024 * 1024) return json({ error: "사진은 4MB 이하만 올릴 수 있습니다." }, 413)
+        const key = `${randomUUID()}.jpg`
+        await getStore("public-images").set(key, await file.arrayBuffer())
+        return json({ url: `${url.origin}/img/${key}` }, 201)
+      }
       // ----- 상품 관리 -----
       if (id === "products" && method === "GET" && !sub) {
         return json((await settingsStore().get("coupang-products", { type: "json" })) || { products: [] })

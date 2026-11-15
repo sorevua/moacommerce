@@ -319,6 +319,12 @@ function openCpEdit(spid) {
     <div class="note e_tagcheck"></div>
     <label>AI에게 줄 메모 <span class="note">(예: 당도 측정값·산지·수확일 — 사실만. 없는 수치는 AI가 쓰지 않음)</span><input class="e_notes" placeholder="예: 서귀포 남원 하우스, 2S~2L 혼합"></label>
     <div class="row" style="margin:8px 0"><button class="btn accent small e_ai">AI 상세페이지·검색어 초안 만들기</button><span class="note e_aist"></span></div>
+    <div style="background:#f7f7f4;border-radius:8px;padding:10px;margin:8px 0">
+      <label>사진 넣기 <span class="note">(당도계 사진 등 실제 사진만. 상세페이지 맨 위에 들어갑니다)</span></label>
+      <input type="file" accept="image/*" class="e_img">
+      <input class="e_cap" placeholder="사진 설명 (예: 비파괴 당도계 측정 16.6 Brix · 1개 측정, 과일마다 차이 있음)" style="margin-top:6px">
+      <div class="row" style="margin-top:6px"><button class="btn small e_imgadd">사진을 상세페이지에 넣기</button><span class="note e_imgst"></span></div>
+    </div>
     <label>상세페이지 HTML <span class="note">(비워두면 기존 상세 유지)</span><textarea class="e_html" rows="6" placeholder="AI 초안을 만들거나 직접 붙여넣기"></textarea></label>
     <div class="note">미리보기</div><iframe class="e_prev" sandbox="" style="width:100%;height:420px;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>
     <div class="row" style="margin-top:10px"><button class="btn dark e_save">쿠팡에 수정 요청 (승인 후 반영)</button></div>
@@ -330,6 +336,20 @@ function openCpEdit(spid) {
   }
   const prev = () => { $(".e_prev", box).srcdoc = $(".e_html", box).value || "<p style='color:#888;font-family:sans-serif'>(기존 상세 유지)</p>" }
   $(".e_tags", box).oninput = tagCheck; $(".e_html", box).oninput = prev; tagCheck(); prev()
+  $(".e_imgadd", box).onclick = async () => {
+    const f = $(".e_img", box).files[0]; if (!f) return toast("사진을 먼저 고르세요.")
+    const st = $(".e_imgst", box); st.textContent = "올리는 중…"
+    try {
+      const fd = new FormData(); fd.append("file", await shrink(f, 1200), "photo.jpg")
+      const r = await api("coupang/images", { method: "POST", body: fd })
+      const cap = $(".e_cap", box).value.trim()
+      const block = `<div style="text-align:center;margin:0 0 40px"><img src="${r.url}" alt="${esc(cap || "상품 사진")}" style="width:100%;max-width:780px;border-radius:12px">${cap ? `<p style="font-size:17px;color:#444;margin:12px 0 0">${esc(cap)}</p>` : ""}</div>`
+      const h = $(".e_html", box).value
+      const m = h.match(/^\s*<div[^>]*>/)
+      $(".e_html", box).value = m ? h.replace(m[0], m[0] + block) : block + h
+      prev(); st.textContent = "넣었습니다. 미리보기를 확인하세요."
+    } catch (err) { st.textContent = "실패: " + err.message }
+  }
   $(".e_ai", box).onclick = async () => {
     const st = $(".e_aist", box); st.textContent = "작성 중… (30초~1분)"
     await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "ai", sellerProductId: spid, notes: $(".e_notes", box).value }) })
