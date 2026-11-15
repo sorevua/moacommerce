@@ -278,12 +278,15 @@ export async function resumeSale(vendorItemId: string) {
 }
 
 // 배송·반품 정보는 손대지 않고, 상품명·검색어·상세페이지만 바꿔서 승인 요청
-export async function updateProductContent(sellerProductId: string, change: { displayProductName?: string; sellerProductName?: string; searchTags?: string[]; detailHtml?: string; detailImages?: string[] }) {
+export async function updateProductContent(sellerProductId: string, change: { displayProductName?: string; sellerProductName?: string; searchTags?: string[]; detailHtml?: string; detailImages?: string[]; mainImages?: Record<string, string> }) {
   const p = await getProduct(sellerProductId)
   if (change.displayProductName) p.displayProductName = change.displayProductName.slice(0, 100)
   if (change.sellerProductName) p.sellerProductName = change.sellerProductName.slice(0, 100)
   for (const it of p.items || []) {
     if (change.searchTags) it.searchTags = cleanTags(change.searchTags)
+    // 대표사진 교체 (옵션별). 추가 사진(DETAIL)은 그대로 둔다
+    const mi = change.mainImages?.[String(it.vendorItemId)]
+    if (mi) it.images = [{ imageOrder: 0, imageType: "REPRESENTATION", vendorPath: mi }, ...(it.images || []).filter((x: any) => x.imageType !== "REPRESENTATION")]
     if (change.detailImages?.length) it.contents = change.detailImages.map((u) => ({ contentsType: "IMAGE_NO_SPACE", contentDetails: [{ content: u, detailType: "IMAGE" }] }))
     else if (change.detailHtml) it.contents = [{ contentsType: "HTML", contentDetails: [{ content: change.detailHtml, detailType: "TEXT" }] }]
   }
@@ -303,7 +306,7 @@ export function cleanTags(tags: string[]) {
 }
 
 // 기존 상세 내용에서 이미지 주소와 글을 뽑아낸다 (AI 재작성용)
-function normImg(u: string) {
+export function normImg(u: string) {
   u = String(u || "").trim().replace(/&amp;/g, "&")
   if (!u) return ""
   if (u.startsWith("//")) return "https:" + u

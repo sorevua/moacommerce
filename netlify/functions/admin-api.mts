@@ -387,6 +387,11 @@ export default async (req: Request, context: Context) => {
         const body = await req.json()
         const change: any = {}
         if (body.displayProductName) change.displayProductName = String(body.displayProductName)
+        if (body.mainImages && typeof body.mainImages === "object") {
+          const mi: Record<string, string> = {}
+          for (const [k, v] of Object.entries(body.mainImages)) if (/^\d+$/.test(k) && /^https:\/\/[^\s"'<>]+\/img\/[a-f0-9-]{36}\.jpg$/.test(String(v))) mi[k] = String(v)
+          if (Object.keys(mi).length) change.mainImages = mi
+        }
         if (Array.isArray(body.searchTags)) change.searchTags = cleanTags(body.searchTags)
         if (Array.isArray(body.detailImages) && body.detailImages.length) {
           const imgs = body.detailImages.map(String).filter((u: string) => /^https:\/\/[^\s"'<>]+\/img\/[a-f0-9-]{36}\.jpg$/.test(u)).slice(0, 40)

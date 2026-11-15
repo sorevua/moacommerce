@@ -5,7 +5,7 @@ import { getStore } from "@netlify/blobs"
 import Anthropic from "@anthropic-ai/sdk"
 import { createHash } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
-import { listProducts, getProduct, getInventory, extractContent } from "./_lib/coupang.mts"
+import { listProducts, getProduct, getInventory, extractContent, normImg } from "./_lib/coupang.mts"
 import { imageGenConfigured, makeShots, type Shot, type ShotResult } from "./_lib/image-gen.mts"
 
 const store = () => getStore({ name: "admin-settings", consistency: "strong" })
@@ -40,6 +40,7 @@ async function refreshProducts() {
           return {
             vendorItemId: vid,
             itemName: it.itemName,
+            image: (() => { const r = (it.images || []).find((x: any) => x.imageType === "REPRESENTATION") || (it.images || [])[0]; return r ? normImg(r.cdnPath || r.vendorPath) : "" })(),
             salePrice: inv?.salePrice ?? it.salePrice,
             originalPrice: it.originalPrice,
             onSale: inv ? !!inv.onSale : null,

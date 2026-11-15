@@ -247,7 +247,10 @@ function renderCp() {
       const profit = s && i.salePrice ? Math.round(i.salePrice * (1 - fee) - s.supply - Number(SETTINGS.extraShipping || 0)) : null
       return `<tr>
         <td><input type="checkbox" class="cpchk" data-vid="${esc(i.vendorItemId)}" ${cpSel.has(i.vendorItemId) ? "checked" : ""}></td>
-        <td>${esc(i.itemName)}<div class="note">${esc(i.vendorItemId)}</div></td>
+        <td><div class="row" style="flex-wrap:nowrap;align-items:flex-start">
+          ${i.image ? `<a href="${esc(i.image)}" target="_blank" rel="noopener"><img src="/api/admin/coupang/proxy?u=${encodeURIComponent(i.image)}" loading="lazy" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a>` : `<div style="width:64px;height:64px;border-radius:8px;background:#f1f1ee;border:1px dashed var(--line);font-size:11px;color:#999;display:flex;align-items:center;justify-content:center;text-align:center">사진<br>없음</div>`}
+          <div>${esc(i.itemName)}<div class="note">${esc(i.vendorItemId)}</div>
+          ${i.vendorItemId ? `<label class="btn small" style="display:inline-block;margin-top:4px;font-weight:700;cursor:pointer">대표사진 바꾸기<input type="file" accept="image/*" class="cpmain hidden" data-vid="${esc(i.vendorItemId)}" data-spid="${esc(p.sellerProductId)}"></label>` : ""}</div></div></td>
         <td>${i.onSale === false ? '<span style="color:#b91c1c;font-weight:700">판매중지</span>' : i.onSale ? '<span style="color:#15803d;font-weight:700">판매중</span>' : "-"}</td>
         <td><input class="cpprice" data-vid="${esc(i.vendorItemId)}" value="${esc(i.salePrice ?? "")}" style="width:96px" inputmode="numeric"> <button class="btn small cppbtn" data-vid="${esc(i.vendorItemId)}">변경</button>
           ${s ? `<div class="note">공급가 ${won(s.supply)} · 추천 ${won(rec)} · 예상이익 ${profit === null ? "-" : won(profit)}</div>` : `<div class="note">공급가 미연결 (업체·상품에 옵션ID 입력)</div>`}</td>
@@ -266,6 +269,36 @@ function renderCp() {
   }).join("") || ""
 }
 async function cpItem(vid, body) { await api("coupang/items/" + vid, { method: "PUT", body: JSON.stringify(body) }) }
+function squareJpeg(file, size = 1000) {
+  return new Promise((resolve, reject) => {
+    const img = new Image(), url = URL.createObjectURL(file)
+    img.onload = () => {
+      const m = Math.min(img.width, img.height), c = document.createElement("canvas"); c.width = c.height = size
+      c.getContext("2d").drawImage(img, (img.width - m) / 2, (img.height - m) / 2, m, m, 0, 0, size, size); URL.revokeObjectURL(url)
+      c.toBlob(b => b ? resolve({ blob: b, small: m < 500 }) : reject(new Error("사진 변환 실패")), "image/jpeg", 0.9)
+    }
+    img.onerror = () => reject(new Error("사진을 읽을 수 없습니다.")); img.src = url
+  })
+}
+$("#cpList").addEventListener("change", async e => {
+  if (!e.target.classList.contains("cpmain")) return
+  const f = e.target.files[0], vid = e.target.dataset.vid, spid = e.target.dataset.spid; if (!f) return
+  const p = (CPP.products || []).find(x => x.sellerProductId === spid), it = (p?.items || []).find(x => x.vendorItemId === vid)
+  try {
+    const { blob, small } = await squareJpeg(f)
+    if (small && !confirm("사진이 작습니다(짧은 변 500px 미만). 흐리게 보일 수 있어요. 그래도 쓸까요?")) return
+    const ids = (p.items || []).map(x => x.vendorItemId).filter(Boolean)
+    const all = ids.length > 1 && confirm(`이 사진을 이 상품의 모든 옵션(${ids.length}개) 대표사진으로 쓸까요?\n\n[확인] 모든 옵션에 적용\n[취소] "${it?.itemName || vid}" 옵션에만 적용`)
+    if (!confirm(`대표사진 변경을 쿠팡에 요청할까요? 가운데 기준 정사각형으로 잘라 올리며, 쿠팡 승인 후 반영됩니다.`)) return
+    toast("사진 올리는 중…")
+    const fd = new FormData(); fd.append("file", blob, "main.jpg")
+    const up = await api("coupang/images", { method: "POST", body: fd })
+    const mainImages = {}; (all ? ids : [vid]).forEach(v => mainImages[v] = up.url)
+    const r = await api("coupang/products/" + spid, { method: "PUT", body: JSON.stringify({ mainImages }) })
+    ;(p.items || []).forEach(x => { if (mainImages[x.vendorItemId]) x.image = up.url })
+    renderCp(); toast("대표사진 변경 요청 완료 — 쿠팡 승인 후 반영됩니다.")
+  } catch (err) { toast(err.message) } finally { e.target.value = "" }
+})
 $("#cpList").addEventListener("change", e => {
   if (e.target.classList.contains("cpchk")) { e.target.checked ? cpSel.add(e.target.dataset.vid) : cpSel.delete(e.target.dataset.vid); renderCpInfoOnly() }
 })
