@@ -72,6 +72,13 @@ nav button .ic{font-size:18px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
 .tile{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;cursor:pointer;text-align:left}
 .tile:hover{border-color:var(--ink)}
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}
+.flow .st{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;position:relative}
+.flow .st .k{font-size:13px;color:var(--mute);font-weight:700}
+.flow .st .n{font-size:28px;font-weight:900;line-height:1.2}
+.flow .st .d{font-size:13px;color:var(--mute);margin-top:4px;line-height:1.45}
+.flow .st.now{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent)}
+@media (max-width:760px){.flow{grid-template-columns:1fr}}
 .tile .n{font-size:34px;font-weight:900;letter-spacing:-.03em;line-height:1.1}
 .tile .t{font-size:14px;color:var(--mute);margin-top:4px;font-weight:600}
 .subnav{display:flex;gap:6px;margin-bottom:14px}
@@ -113,6 +120,7 @@ nav button .ic{font-size:18px}
     <nav>
       <button data-tab="home" class="on"><span class="ic">🏠</span>홈</button>
       <button data-tab="orders"><span class="ic">📦</span>주문</button>
+      <button data-tab="money"><span class="ic">💰</span>수익</button>
       <button data-tab="coupang"><span class="ic">🛒</span>상품</button>
       <button data-tab="vendors"><span class="ic">🏪</span>업체</button>
       <button data-tab="promo"><span class="ic">📣</span>홍보</button>
@@ -142,6 +150,7 @@ nav button .ic{font-size:18px}
 
     <!-- 주문·발주 -->
     <section id="tab-orders" class="hidden">
+      <div class="card" id="flowCard"></div>
       <div class="card" id="todayCard"></div>
       <div class="card">
         <h2>수동 주문 입력 (카톡·밴드 등)</h2>
@@ -274,6 +283,22 @@ nav button .ic{font-size:18px}
     </section>
 
     <!-- 설정 -->
+    <!-- 수익 -->
+    <section id="tab-money" class="hidden">
+      <div class="card">
+        <div class="row"><h2 style="margin:0;font-size:24px">수익 현황</h2><span class="spacer"></span>
+          <select id="m_period" style="width:auto"><option value="today">오늘</option><option value="week">최근 7일</option><option value="month" selected>이번 달</option><option value="last">지난 달</option><option value="all">전체</option></select>
+          <select id="m_channel" style="width:auto"><option value="">모든 채널</option><option>쿠팡</option><option>네이버</option><option>카톡</option><option>밴드</option><option>기타</option></select>
+        </div>
+        <div class="tiles" id="moneyTiles" style="margin-top:14px"></div>
+        <div class="note" style="margin-top:10px">순이익 = 판매금액 − 공급가(업체에 주는 돈) − 마켓 수수료(추정). 취소 주문은 빼고 계산합니다. 수수료는 [설정]의 요율로 계산한 <b>추정값</b>이라 쿠팡·네이버 실제 정산과 조금 다를 수 있습니다.</div>
+      </div>
+      <div class="card" id="moneyWarn"></div>
+      <div class="card"><h2>채널별</h2><div style="overflow-x:auto"><table><thead><tr><th>채널</th><th class="num">주문</th><th class="num">판매금액</th><th class="num">공급가</th><th class="num">수수료</th><th class="num">순이익</th><th class="num">이익률</th></tr></thead><tbody id="moneyByCh"></tbody></table></div></div>
+      <div class="card"><h2>상품별</h2><div style="overflow-x:auto"><table><thead><tr><th>업체</th><th>상품</th><th class="num">박스</th><th class="num">판매금액</th><th class="num">순이익</th></tr></thead><tbody id="moneyByProd"></tbody></table></div></div>
+      <div class="card"><h2>날짜별</h2><div style="overflow-x:auto"><table><thead><tr><th>날짜</th><th class="num">주문</th><th class="num">판매금액</th><th class="num">순이익</th></tr></thead><tbody id="moneyByDay"></tbody></table></div></div>
+    </section>
+
     <section id="tab-settings" class="hidden">
       <div class="card">
         <h2>판매가 계산 기준</h2>
@@ -333,7 +358,7 @@ async function loadAll() {
   if (!currentVendorId && VENDORS[0]) currentVendorId = VENDORS[0].id
   ORDERS = ORDERS || []
   renderVendorSelects(); renderVendors(); renderSettings(); renderCp()
-  ORDERS = await api("orders"); renderOrders()
+  ORDERS = await api("orders"); renderOrders(); renderMoney()
   await cpP
   loadPromo()
 }
@@ -1252,6 +1277,83 @@ $$(".subnav button").forEach(b => b.onclick = () => {
 })
 
 if (location.hash.length > 1) setTimeout(() => goTab(location.hash.slice(1)), 0)
+// ---------- 수익 ----------
+const wonK = n => (Math.round(n) || 0).toLocaleString("ko-KR") + "원"
+function orderDate(o) { return new Date(o.market?.orderedAt || o.createdAt || 0) }
+function orderSupply(o) {
+  if (Number(o.supplyPrice) > 0) return Number(o.supplyPrice)
+  const vid = String(o.market?.vendorItemId || "")
+  for (const v of VENDORS || []) for (const p of v.products || []) {
+    const sp = Number(p.supplyPrice ?? p.supply ?? 0)
+    if (vid && String(p.coupangItemId || "").trim() === vid && sp) return sp
+  }
+  const v = (VENDORS || []).find(x => x.id === o.vendorId)
+  const p = (v?.products || []).find(x => x.name === o.productName)
+  return Number(p?.supplyPrice ?? p?.supply ?? 0)
+}
+function feeRate(ch) {
+  const s = SETTINGS || {}, vat = 1 + Number(s.vatOnFee ?? 0.1)
+  if (ch === "쿠팡") return Number(s.coupangFee ?? 0.106) * vat
+  if (ch === "네이버") return (Number(s.naverSalesFee ?? 0.0273) + Number(s.naverPayFee ?? 0.033)) * vat
+  return 0
+}
+function orderMoney(o) {
+  const qty = Number(o.qty || 1), sales = Number(o.salePrice || 0) * qty
+  const unit = orderSupply(o), supply = unit * qty, fee = sales * feeRate(o.channel)
+  return { qty, sales, supply, fee, profit: sales - supply - fee, noSupply: !unit, noPrice: !Number(o.salePrice) }
+}
+function inPeriod(d, per) {
+  const now = new Date(), y = now.getFullYear(), m = now.getMonth()
+  if (per === "today") return d.toDateString() === now.toDateString()
+  if (per === "week") return now - d <= 7 * 864e5
+  if (per === "month") return d.getFullYear() === y && d.getMonth() === m
+  if (per === "last") { const lm = new Date(y, m - 1, 1); return d.getFullYear() === lm.getFullYear() && d.getMonth() === lm.getMonth() }
+  return true
+}
+function moneySum(list) {
+  const t = { n: 0, qty: 0, sales: 0, supply: 0, fee: 0, profit: 0 }
+  for (const o of list) { const m = orderMoney(o); t.n++; t.qty += m.qty; t.sales += m.sales; t.supply += m.supply; t.fee += m.fee; t.profit += m.profit }
+  return t
+}
+function renderMoney() {
+  if (!$("#moneyTiles")) return
+  const per = $("#m_period").value, ch = $("#m_channel").value
+  const live = (ORDERS || []).filter(o => o.status !== "취소" && inPeriod(orderDate(o), per) && (!ch || o.channel === ch))
+  const t = moneySum(live), cancel = (ORDERS || []).filter(o => o.status === "취소" && inPeriod(orderDate(o), per) && (!ch || o.channel === ch)).length
+  const tile = (n, tt, color) => `<div class="tile" style="cursor:default"><div class="n" style="font-size:26px;color:${color || "var(--ink)"}">${n}</div><div class="t">${tt}</div></div>`
+  $("#moneyTiles").innerHTML = tile(wonK(t.sales), "판매금액 (고객이 낸 돈)") + tile(wonK(t.supply), "공급가 (업체에 줄 돈)") + tile(wonK(t.fee), "마켓 수수료 (추정)") + tile(wonK(t.profit), "순이익", t.profit >= 0 ? "var(--ok)" : "var(--accent)") + tile(`${t.n}건 · ${t.qty}박스`, "주문") + tile(cancel + "건", "취소")
+  const noS = live.filter(o => orderMoney(o).noSupply), noP = live.filter(o => orderMoney(o).noPrice)
+  $("#moneyWarn").innerHTML = (noS.length || noP.length)
+    ? `<h2>⚠️ 계산이 빠진 주문</h2>${noS.length ? `<div class="note" style="font-size:15px">공급가를 모르는 주문 ${noS.length}건 — 이 주문들은 순이익이 실제보다 크게 잡힙니다. [업체]에서 해당 상품의 공급가와 쿠팡 옵션ID를 넣어 주세요.<br>${[...new Set(noS.map(o => o.productName || o.marketProductName))].slice(0, 8).map(esc).join(" · ")}</div>` : ""}${noP.length ? `<div class="note" style="font-size:15px;margin-top:8px">판매가가 0원인 주문 ${noP.length}건</div>` : ""}`
+    : `<div class="okbox">모든 주문의 공급가·판매가가 확인됐습니다.</div>`
+  const groups = (key) => { const g = new Map(); for (const o of live) { const k = key(o); if (!g.has(k)) g.set(k, []); g.get(k).push(o) } return [...g.entries()] }
+  $("#moneyByCh").innerHTML = groups(o => o.channel || "기타").map(([k, l]) => { const x = moneySum(l); return `<tr><td>${esc(k)}</td><td class="num">${x.n}</td><td class="num">${wonK(x.sales)}</td><td class="num">${wonK(x.supply)}</td><td class="num">${wonK(x.fee)}</td><td class="num"><b>${wonK(x.profit)}</b></td><td class="num">${x.sales ? Math.round(x.profit / x.sales * 100) + "%" : "-"}</td></tr>` }).join("") || `<tr><td colspan="7" class="note">이 기간에 주문이 없습니다.</td></tr>`
+  const vname = id => (VENDORS || []).find(v => v.id === id)?.name || "업체 미연결"
+  $("#moneyByProd").innerHTML = groups(o => vname(o.vendorId) + "|" + (o.productName || o.marketProductName)).sort((a, b) => moneySum(b[1]).sales - moneySum(a[1]).sales).map(([k, l]) => { const x = moneySum(l), [vn, pn] = k.split("|"); return `<tr><td>${esc(vn)}</td><td>${esc(pn)}</td><td class="num">${x.qty}</td><td class="num">${wonK(x.sales)}</td><td class="num">${wonK(x.profit)}</td></tr>` }).join("") || `<tr><td colspan="5" class="note">-</td></tr>`
+  $("#moneyByDay").innerHTML = groups(o => orderDate(o).toLocaleDateString("ko-KR")).sort((a, b) => orderDate(b[1][0]) - orderDate(a[1][0])).slice(0, 31).map(([k, l]) => { const x = moneySum(l); return `<tr><td>${esc(k)}</td><td class="num">${x.n}</td><td class="num">${wonK(x.sales)}</td><td class="num">${wonK(x.profit)}</td></tr>` }).join("") || `<tr><td colspan="4" class="note">-</td></tr>`
+}
+$("#m_period").onchange = renderMoney; $("#m_channel").onchange = renderMoney
+
+// ---------- 주문 흐름 ----------
+function renderFlow() {
+  if (!$("#flowCard")) return
+  const os = ORDERS || []
+  const a = os.filter(o => o.status === "접수").length
+  const b = os.filter(o => o.status === "발주완료" && !o.invoice).length
+  const c = os.filter(o => o.status === "발송" || o.invoice).length
+  const sync = CP?.last?.at
+  const st = (k, n, d, now) => `<div class="st ${now ? "now" : ""}"><div class="k">${k}</div><div class="n">${n}</div><div class="d">${d}</div></div>`
+  $("#flowCard").innerHTML = `<h2 style="margin:0">주문이 들어오면 이렇게 처리돼요</h2>
+    <div class="flow">
+      ${st("① 주문 들어옴", a + "건", "쿠팡 주문은 30분마다 자동으로 여기 들어옵니다. 카톡·밴드 주문은 아래에 직접 입력.", a > 0)}
+      ${st("② 업체에 발주", b + "건", "[발주서 보내기]로 업체에 주소·수량 전달 → 업체가 포장·발송. 쿠팡에는 '상품준비중'으로 자동 표시.", b > 0)}
+      ${st("③ 송장 입력", c + "건", "업체가 준 송장번호를 [송장]에 입력 → 쿠팡에 자동 전송 → 고객에게 배송 알림.", false)}
+      ${st("④ 배송·구매확정", "쿠팡", "배송완료 후 고객이 구매확정(또는 자동확정). 쿠팡이 처리합니다.", false)}
+      ${st("⑤ 정산·수익", "💰", "쿠팡이 수수료를 빼고 정산 → 업체에 공급가 지급 → 남는 돈이 순이익. [수익] 탭에서 확인.", false)}
+    </div>
+    <div class="note" style="margin-top:8px">${a ? `지금 할 일: 새 주문 ${a}건 발주서 보내기` : b ? `지금 할 일: 송장번호 ${b}건 받아서 입력하기` : "지금 처리할 주문이 없습니다."}${sync ? ` · 마지막 쿠팡 주문 확인 ${new Date(sync).toLocaleString("ko-KR")}` : ""}</div>`
+}
+
 // ---------- 홈 ----------
 function renderHome() {
   const os = ORDERS || [], items = (CPP.products || []).flatMap(p => p.items || [])
@@ -1260,7 +1362,8 @@ function renderHome() {
   const promoOn = Object.values(PROMO.status || {}).filter(x => x?.on).length
   const notPosted = (PROMO.posts || []).filter(x => !x.postedAt).length
   const tile = (n, t, go, color) => `<button class="tile" data-go="${go}"><div class="n" style="color:${color || "var(--ink)"}">${n}</div><div class="t">${t}</div></button>`
-  $("#homeTiles").innerHTML = tile(newO, "새 주문 (발주 필요)", "orders", newO ? "var(--accent)" : "") + tile(poDone, "송장 입력 기다림", "orders") + tile(onSale, "판매 중 옵션", "coupang", "var(--ok)") + tile(off, "판매중지 옵션", "coupang") + tile(promoOn, "진행 중인 홍보", "promo") + tile(notPosted, "아직 안 올린 홍보 글", "promo", notPosted ? "var(--warn)" : "")
+  const mm = moneySum(os.filter(o => o.status !== "취소" && inPeriod(orderDate(o), "month")))
+  $("#homeTiles").innerHTML = tile(wonK(mm.profit), "이번 달 순이익 (추정)", "money", "var(--ok)") + tile(newO, "새 주문 (발주 필요)", "orders", newO ? "var(--accent)" : "") + tile(poDone, "송장 입력 기다림", "orders") + tile(onSale, "판매 중 옵션", "coupang", "var(--ok)") + tile(off, "판매중지 옵션", "coupang") + tile(promoOn, "진행 중인 홍보", "promo") + tile(notPosted, "아직 안 올린 홍보 글", "promo", notPosted ? "var(--warn)" : "")
   const todo = []
   if (newO) todo.push(`📦 새 주문 ${newO}건 → [주문]에서 발주서 보내기`)
   if (poDone) todo.push(`🚚 송장번호 ${poDone}건 입력하기`)
@@ -1432,6 +1535,7 @@ function filteredOrders() {
   return ORDERS.filter(o => (!fv || o.vendorId === fv) && (!fs || o.status === fs))
 }
 function renderOrders() {
+  try { renderFlow(); renderMoney(); renderHome() } catch (e) { console.error(e) }
   const list = filteredOrders()
   const vname = id => VENDORS.find(v => v.id === id)?.name || "-"
   $("#orderRows").innerHTML = list.map(o => `<tr>
