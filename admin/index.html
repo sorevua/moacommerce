@@ -309,6 +309,56 @@ async function bulk(action) {
 }
 $("#cpStopSel").onclick = () => bulk("stop"); $("#cpResumeSel").onclick = () => bulk("resume")
 
+
+const FRUIT_GUIDE = [
+  { keys: ["귤", "감귤", "유라", "옐로향", "엘로향", "한라봉", "천혜향", "레드향", "황금향", "만감", "카라향"], text:
+`[고르는 법] 껍질에 윤기가 있고 들었을 때 크기에 비해 묵직한 것이 과즙이 많습니다.
+[받으면 바로] 상자를 열어 눌리거나 상한 과일을 먼저 골라내 주세요. 상한 과일이 닿아 있으면 옆 과일까지 쉽게 무릅니다.
+[보관] 물기를 닦고 서로 겹치지 않게 펼쳐 서늘하고 통풍이 잘 되는 곳에 두세요. 오래 두고 드실 때는 키친타월이나 신문지로 감싸 냉장고 채소칸에 보관합니다.
+[드시는 법] 껍질째 흐르는 물에 씻은 뒤 드세요. 차게 두었다가 드시면 더 상큼합니다.` },
+  { keys: ["석류"], text:
+`[고르는 법] 껍질이 단단하고 색이 고르며 크기에 비해 묵직한 것이 알이 꽉 차 있습니다.
+[보관] 껍질째 비닐에 넣어 냉장 보관하면 비교적 오래 둘 수 있습니다. 알맹이만 분리했다면 밀폐 용기에 담아 냉장 보관하고 빨리 드세요. 오래 두려면 알맹이를 냉동해도 됩니다.
+[손질] 윗부분을 얕게 도려내고 껍질의 칸막이를 따라 칼집을 낸 뒤, 물을 받은 볼 안에서 벌리면 즙이 튀지 않고 알이 쉽게 분리됩니다.` },
+  { keys: ["배", "신고"], text:
+`[고르는 법] 껍질이 매끈하고 상처가 없으며 크기에 비해 묵직한 것이 과즙이 풍부합니다.
+[보관] 하나씩 신문지나 랩으로 감싸 냉장 보관하면 수분이 덜 빠집니다. 사과와 함께 두면 빨리 익어 물러질 수 있으니 따로 보관하세요.
+[드시는 법] 차게 두었다가 드시면 아삭함과 시원한 과즙을 더 잘 느낄 수 있습니다.` },
+  { keys: ["사과", "부사", "홍로", "시나노"], text:
+`[고르는 법] 단단하고 크기에 비해 묵직하며 꼭지가 마르지 않은 것이 신선합니다.
+[보관] 비닐봉지에 넣어 냉장 보관하세요. 사과는 다른 과일을 빨리 익게 하는 성분이 나오므로 다른 과일과 따로 두는 것이 좋습니다.` },
+  { keys: ["키위", "골드키위", "참다래"], text:
+`[익었는지 확인] 손으로 살짝 눌렀을 때 말랑하면 먹기 좋게 익은 상태입니다.
+[후숙] 단단하면 상온에 두면 익습니다. 사과와 함께 봉지에 넣어 두면 더 빨리 익습니다.
+[보관] 다 익은 키위는 냉장 보관하고 빨리 드세요.` },
+]
+function guideFor(name) {
+  const n = String(name || "")
+  const g = FRUIT_GUIDE.find(x => x.keys.some(k => k === "배" ? /(^|[^가-힣])배|신고배|나주배/.test(n) : n.includes(k)))
+  return g ? g.text : ""
+}
+const BANNED = [["최고", "과장"], ["1위", "근거 없는 순위"], ["100%", "과장"], ["무조건", "과장"], ["완치", "의학 표현"], ["치료", "의학 표현"], ["예방", "의학 표현"], ["특효", "의학 표현"], ["카톡", "외부 채널 유도"], ["카카오", "외부 채널 유도"], ["오픈채팅", "외부 채널 유도"], ["인스타", "외부 채널 유도"], ["http", "외부 링크(사진 주소 제외)"]]
+function checkListing({ title, tags, html, notes }) {
+  const errors = [], warns = []
+  const text = String(html || "").replace(/<img[^>]*>/gi, " ").replace(/<[^>]+>/g, " ")
+  if (!title) errors.push("노출상품명이 비었습니다.")
+  if (title.length > 100) errors.push(`노출상품명이 ${title.length}자입니다 (100자 이내).`)
+  const words = title.split(/\s+/).filter(w => w.length > 1), dupW = words.filter((w, i) => words.indexOf(w) !== i)
+  if (dupW.length) warns.push(`상품명에 같은 단어 반복: ${[...new Set(dupW)].join(", ")}`)
+  if (tags.length > 20) warns.push("검색어가 20개를 넘어 잘립니다.")
+  if (tags.some(t => t.length > 20)) warns.push("20자 넘는 검색어가 있습니다.")
+  if (tags.length < 10) warns.push(`검색어가 ${tags.length}개뿐입니다. 10개 이상 권장.`)
+  for (const [w, why] of BANNED) {
+    if (title.includes(w)) errors.push(`상품명에 "${w}" (${why})`)
+    if (text.includes(w)) (why.includes("외부") ? errors : warns).push(`상세글에 "${w}" (${why})`)
+  }
+  if (/\d{2,3}-\d{3,4}-\d{4}/.test(text)) errors.push("상세글에 전화번호가 있습니다 (외부 거래 유도).")
+  for (const m of (title + " " + text).matchAll(/(\d+(?:\.\d+)?)\s*(?:brix|브릭스)/gi)) if (!String(notes).includes(m[1])) errors.push(`메모에 없는 당도 ${m[1]}이(가) 들어 있습니다.`)
+  if (html && !/상자를? 포함|상자 포함/.test(text)) warns.push("'중량은 상자 포함' 안내가 상세에 보이지 않습니다.")
+  if (html && !/차이/.test(text)) warns.push("신선식품 개체 차이 안내가 보이지 않습니다.")
+  return { errors: [...new Set(errors)], warns: [...new Set(warns)] }
+}
+
 async function openCpEdit(spid) {
   const p = (CPP.products || []).find(x => x.sellerProductId === spid); if (!p) return
   const box = $(`.card[data-spid="${spid}"] .cpeditbox`)
@@ -330,6 +380,11 @@ async function openCpEdit(spid) {
     <details style="margin:10px 0" open><summary style="font-weight:700;cursor:pointer">모아커머스 소개 · 배송/반품 안내 (모든 상품 공통, 고치면 저장됨)</summary>
       <label style="margin-top:8px">판매자 소개 <span class="note">(상세페이지 맨 끝 · 사실만)</span><textarea class="e_brand" rows="2"></textarea></label>
       <label>배송·교환·반품 안내 <span class="note">(업체 정책 그대로)</span><textarea class="e_ship" rows="7"></textarea></label>
+      <label>확인된 공통 사실 <span class="note">(모든 상품에 해당하는 것만)</span><textarea class="e_facts" rows="2"></textarea></label>
+    </details>
+    <details style="margin:10px 0" open><summary style="font-weight:700;cursor:pointer">과일 고르는 법·보관·손질 정보 (이 상품 전용, 검토 후 수정 가능)</summary>
+      <p class="note">일반적으로 알려진 보관법만 넣었습니다. 업체가 따로 안내하는 방법이 있으면 그 내용으로 바꿔 주세요. AI는 이 칸에 있는 정보만 씁니다.</p>
+      <textarea class="e_guide" rows="7"></textarea>
     </details>
     <h3 style="margin:14px 0 6px">② AI에게 알려줄 사실</h3>
     <textarea class="e_notes" rows="3" placeholder="사실만 적으세요. 예: 제주 유라귤(엘로향). TV 방송 출연 농가. 당도계 측정 예시 16.6 Brix(1개 측정). 2kg·3kg·5kg 박스."></textarea>
@@ -342,6 +397,7 @@ async function openCpEdit(spid) {
     <div class="row" style="justify-content:space-between;margin-top:10px"><div class="note">미리보기 (휴대폰 화면 폭)</div><button class="btn small e_toggle">HTML 직접 고치기</button></div>
     <textarea class="e_html hidden" rows="8" placeholder="AI 초안이 여기에 들어옵니다"></textarea>
     <div style="display:flex;justify-content:center;background:#eee;padding:12px;border-radius:8px"><iframe class="e_prev" sandbox="" style="width:400px;max-width:100%;height:640px;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe></div>
+    <div class="e_check"></div>
     <div class="row" style="margin-top:10px"><button class="btn dark e_save">쿠팡에 수정 요청 (승인 후 반영)</button></div>
   </div>`
   const tagCheck = () => {
@@ -349,13 +405,20 @@ async function openCpEdit(spid) {
     const long = t.filter(x => x.length > 20), dup = t.filter((x, i) => t.indexOf(x) !== i)
     $(".e_tagcheck", box).textContent = `${t.length}/20개` + (t.length > 20 ? " · 20개 초과분은 잘립니다" : "") + (long.length ? ` · 20자 초과: ${long.join(", ")}` : "") + (dup.length ? ` · 중복: ${dup.join(", ")}` : "")
   }
-  const prev = () => { $(".e_prev", box).srcdoc = `<meta name="referrer" content="no-referrer"><body style="margin:0">` + ($(".e_html", box).value || "<p style='color:#888;font-family:sans-serif;padding:16px'>(아직 초안 없음 — 기존 상세 유지)</p>") }
+  const runCheck = () => {
+    const c = checkListing({ title: $(".e_title", box).value.trim(), tags: $(".e_tags", box).value.split(",").map(x => x.trim()).filter(Boolean), html: $(".e_html", box).value, notes: $(".e_notes", box).value + " " + extras.map(e => e.caption).join(" ") })
+    $(".e_check", box).innerHTML = `<div style="border-radius:8px;padding:10px 12px;margin:10px 0;font-size:14px;background:${c.errors.length ? "#fef2f2" : c.warns.length ? "#fff7ed" : "#f0fdf4"};border:1px solid ${c.errors.length ? "#fecaca" : c.warns.length ? "#fed7aa" : "#bbf7d0"}"><strong>등록 전 자동 점검</strong> ${c.errors.length ? `— 고쳐야 저장됩니다` : c.warns.length ? "— 확인 권장" : "— 문제 없음 ✅"}${c.errors.map(x => `<div>❌ ${esc(x)}</div>`).join("")}${c.warns.map(x => `<div>⚠ ${esc(x)}</div>`).join("")}</div>`
+    return c
+  }
+  const prev = () => { runCheck(); $(".e_prev", box).srcdoc = `<meta name="referrer" content="no-referrer"><body style="margin:0">` + ($(".e_html", box).value || "<p style='color:#888;font-family:sans-serif;padding:16px'>(아직 초안 없음 — 기존 상세 유지)</p>") }
   const drawExtras = () => {
     $(".e_extras", box).innerHTML = extras.map((e, i) => `<div class="row" style="margin-bottom:6px"><img src="${esc(e.url)}" style="width:64px;height:64px;object-fit:cover;border-radius:6px"><span style="flex:1;font-size:13px">${esc(e.caption || "(설명 없음)")}</span><button class="btn small e_exdel" data-i="${i}">빼기</button></div>`).join("")
   }
   const saveExtras = async () => { extras = await api("coupang/extras/" + spid, { method: "PUT", body: JSON.stringify(extras) }); drawExtras() }
   $(".e_extras", box).onclick = async e => { const b = e.target.closest(".e_exdel"); if (!b) return; extras.splice(Number(b.dataset.i), 1); await saveExtras() }
   $(".e_brand", box).value = copy.brand ?? '모아커머스 — 산지 업체와 직접 연결해 제철 과일을 보내 드립니다. 궁금한 점은 쿠팡 문의하기로 남겨 주세요.'
+  $(".e_facts", box).value = copy.facts ?? "산지직송: 산지 업체가 수확한 과일을 직접 포장해 발송합니다."
+  $(".e_guide", box).value = copy.guides?.[spid] ?? guideFor(p.displayProductName || p.sellerProductName)
   $(".e_ship", box).value = copy.shipping ?? `무료배송입니다.
 표기된 중량(kg)은 상자를 포함한 무게입니다.
 신선식품 특성상 단순 변심에 의한 반품은 어렵습니다.
@@ -365,6 +428,7 @@ async function openCpEdit(spid) {
 - 완파: 반품 회수 후 환불 또는 재배송
 받으시면 바로 상자를 열어 상태를 확인해 주세요.`
   $(".e_toggle", box).onclick = () => $(".e_html", box).classList.toggle("hidden")
+  $(".e_title", box).oninput = runCheck
   $(".e_tags", box).oninput = tagCheck; $(".e_html", box).oninput = prev; tagCheck(); prev(); drawExtras()
   $(".e_imgadd", box).onclick = async () => {
     const f = $(".e_img", box).files[0]; if (!f) return toast("사진을 먼저 고르세요.")
@@ -381,9 +445,9 @@ async function openCpEdit(spid) {
     const gen = $(".e_gen", box).checked
     const st = $(".e_aist", box); st.textContent = gen ? "사진 분석·작성 중… 필요한 연출 사진을 만들고 검수하면 3~8분 걸립니다." : "사진 분석·작성 중… (1~2분)"; $(".e_report", box).innerHTML = ""
     const images = $$(".e_use", box).filter(c => c.checked).map(c => c.dataset.u)
-    const brand = $(".e_brand", box).value.trim(), shipping = $(".e_ship", box).value.trim()
-    api("coupang/copy", { method: "PUT", body: JSON.stringify({ brand, shipping }) }).catch(() => {})
-    await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "ai", sellerProductId: spid, notes: $(".e_notes", box).value, images, extras, brand, shipping, genImages: gen }) })
+    const brand = $(".e_brand", box).value.trim(), shipping = $(".e_ship", box).value.trim(), facts = $(".e_facts", box).value.trim(), fruitGuide = $(".e_guide", box).value.trim()
+    api("coupang/copy", { method: "PUT", body: JSON.stringify({ brand, shipping, facts, guide: { id: spid, text: fruitGuide } }) }).catch(() => {})
+    await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "ai", sellerProductId: spid, notes: $(".e_notes", box).value, images, extras, brand, shipping, facts, fruitGuide, genImages: gen }) })
     const t0 = Date.now()
     const tick = async () => {
       const r = await api("coupang/ai/" + spid).catch(() => ({}))
@@ -400,6 +464,9 @@ async function openCpEdit(spid) {
   }
   $(".e_save", box).onclick = async e => {
     const tags = $(".e_tags", box).value.split(",").map(x => x.trim()).filter(Boolean)
+    const chk = runCheck()
+    if (chk.errors.length) return toast("자동 점검에서 ❌ 항목을 먼저 고쳐 주세요.")
+    if (chk.warns.length && !confirm("⚠ 확인 권장 항목이 있습니다:\n" + chk.warns.join("\n") + "\n\n그래도 진행할까요?")) return
     if (!confirm("쿠팡에 수정 요청할까요? 승인 심사 후 반영되며, 그동안 기존 내용이 노출됩니다. 배송·반품 정보는 그대로 둡니다.")) return
     e.target.disabled = true
     try {
