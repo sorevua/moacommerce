@@ -401,7 +401,7 @@ function designSections(d, themeKey) {
   if ((d.points || []).length) out.push(`<section style="${W}background:#fff;padding-bottom:110px">${head("POINT", "이래서 다릅니다", "")}
     ${(d.points || []).map((p, i) => `<div style="margin:0 60px 22px;background:${t.band};border-radius:28px;padding:44px 48px;display:flex;align-items:center;gap:36px">
       <div style="flex:0 0 auto;font-size:64px;font-weight:900;color:${t.main};line-height:1;letter-spacing:-0.04em">${String(i + 1).padStart(2, "0")}</div>
-      <div><div style="font-size:34px;font-weight:800;line-height:1.3">${dx(p.title)}</div><div style="font-size:23px;color:#5c5c5c;margin-top:10px;line-height:1.55">${dx(p.desc)}</div></div></div>`).join("")}</section>`)
+      <div style="flex:1;min-width:0"><div style="font-size:34px;font-weight:800;line-height:1.3">${dx(p.title)}</div><div style="font-size:23px;color:#5c5c5c;margin-top:10px;line-height:1.55">${dx(p.desc)}</div></div></div>`).join("")}</section>`)
   // 4. 근거(측정값)
   const pr = d.proof
   if (pr && pr.value) out.push(`<section style="${W}background:${t.band};padding-bottom:110px">${head("CHECK", dx(pr.label || "측정 예시"), "")}
@@ -417,6 +417,7 @@ function designSections(d, themeKey) {
     <div style="font-size:50px;font-weight:900;line-height:1.3;margin-top:34px">${dx(st.title)}</div>
     <div style="font-size:25px;line-height:1.7;opacity:.8;margin-top:24px">${dx(st.text)}</div></section>`)
   // 6. 사진 (한 장씩 별도 섹션)
+  { const used = new Set([h.photo, d.proof?.photo].filter(Boolean)); d.gallery = (d.gallery || []).filter(g => g.photo && !used.has(g.photo) && (used.add(g.photo), true)) }
   ;(d.gallery || []).forEach((g, i) => out.push(`<section style="${W}background:#fff;padding:${i ? 40 : 110}px 0 ${i === d.gallery.length - 1 ? 110 : 40}px">
     ${i === 0 ? `<div style="text-align:center;padding:0 60px 56px">${label("DETAIL")}<div style="font-size:46px;font-weight:900;margin-top:18px">눈으로 확인하세요</div></div>` : ""}
     <div style="margin:0 40px;border-radius:28px;overflow:hidden;height:700px"><img src="${proxied(g.photo)}" style="display:block;width:700px;height:700px;object-fit:cover"></div>
@@ -431,14 +432,14 @@ function designSections(d, themeKey) {
   // 8. 가이드
   if ((d.guide || []).length) out.push(`<section style="${W}background:#fff;padding-bottom:110px">${head("GUIDE", "맛있게 드시는 법", "받으신 순간부터 이렇게 해 주세요")}${sc.guide ? `<div style="margin:0 60px 40px;border-radius:28px;overflow:hidden">${scene(sc.guide, 560).replace("width:780px", "width:660px")}</div>` : ""}
     ${d.guide.map((g, i) => `<div style="margin:0 60px;padding:36px 0;border-top:${i ? "1px solid #ececec" : `3px solid ${t.ink}`};display:flex;gap:32px">
-      <div style="flex:0 0 150px;font-size:26px;font-weight:900;color:${t.main};line-height:1.4">${dx(g.label)}</div>
-      <div style="font-size:24px;line-height:1.65;color:#333">${dx(g.text)}</div></div>`).join("")}</section>`)
+      <div style="flex:0 0 170px;font-size:25px;font-weight:900;color:${t.main};line-height:1.45">${dx(g.label)}</div>
+      <div style="flex:1;min-width:0;font-size:24px;line-height:1.65;color:#333">${dx(g.text)}</div></div>`).join("")}</section>`)
   // 9. 배송
   if ((d.shipping || []).length) out.push(`<section style="${W}background:${t.band};padding-bottom:110px">${head("DELIVERY", "배송 · 교환 · 반품", "")}
     <div style="margin:0 60px;background:#fff;border-radius:28px;padding:16px 44px">
     ${d.shipping.map((g, i) => `<div style="padding:30px 0;${i ? "border-top:1px solid #efefef;" : ""}display:flex;gap:28px">
-      <div style="flex:0 0 150px;font-size:23px;font-weight:800;color:${t.ink}">${dx(g.label)}</div>
-      <div style="font-size:23px;line-height:1.6;color:#444">${dx(g.text)}</div></div>`).join("")}</div></section>`)
+      <div style="flex:0 0 170px;font-size:23px;font-weight:800;color:${t.ink}">${dx(g.label)}</div>
+      <div style="flex:1;min-width:0;font-size:23px;line-height:1.6;color:#444">${dx(g.text)}</div></div>`).join("")}</div></section>`)
   // 10. 꼭 읽어 주세요
   if ((d.notice || []).length) out.push(`<section style="${W}background:#fff;padding:90px 60px">
     <div style="background:#F6F6F4;border-radius:28px;padding:48px 52px">

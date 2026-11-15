@@ -2,6 +2,7 @@
 // 결과는 Blobs(admin-settings)에 저장하고, 관리자 화면이 주기적으로 읽어 간다.
 import { getStore } from "@netlify/blobs"
 import Anthropic from "@anthropic-ai/sdk"
+import { createHash } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
 import { listProducts, getProduct, getInventory, extractContent } from "./_lib/coupang.mts"
 import { imageGenConfigured, makeShots, type Shot, type ShotResult } from "./_lib/image-gen.mts"
@@ -398,6 +399,8 @@ const DESIGN_SYSTEM = `당신은 한국 오픈마켓 신선식품 상세페이�
 - 메모와 다른 수치(예: 13브릭스)가 박힌 사진, 흐린 사진, 중복, 무관한 사진은 쓰지 않고 analysis에 이유를 적는다.
 - 판매자가 추가한 사진은 반드시 쓴다(설명이 있으면 그 설명을 caption이나 note에 살린다).
 - hero.photo는 가장 먹음직스럽고 글자가 없는 깨끗한 사진.
+- 사진 제목·설명(title·caption)은 그 사진에 실제로 보이는 것만 쓴다. 사진에 없는 장면(나무에 달린 모습, 하우스, 완충재 등)을 지어내면 안 된다. 보이는 게 애매하면 caption을 비운다.
+- 한 사진은 한 번만 쓴다(hero·proof·gallery 통틀어).
 
 [글 규칙]
 - 사실 근거는 판매자메모·확인된공통사실·과일정보·배송반품안내·판매자소개·사진 설명뿐. 없는 수치·인증·수상·판매량·후기·순위 금지.
@@ -464,13 +467,27 @@ async function aiDesign(job: any) {
           if (!r.ok || !/^image\/(jpeg|png|webp|gif)$/.test(type)) return null
           const buf = Buffer.from(await r.arrayBuffer())
           if (buf.byteLength > 4.5 * 1024 * 1024) return null
-          return { type: "base64", media_type: type, data: buf.toString("base64") }
+          return { type: "base64", media_type: type, data: buf.toString("base64"), hash: createHash("sha1").update(buf).digest("hex") }
         } catch {
           return null
         }
       }),
     )
-    const content: any[] = [{ type: "text", text: "상품 정보:\n" + JSON.stringify(info, null, 1) }]
+    // 같은 사진(내용이 같은 파일) 중복 제거, AI가 못 본 사진은 쓰지 않음
+    {
+      const seenHash = new Set<string>()
+      const keepP: any[] = [], keepI: any[] = []
+      photos.forEach((ph, i) => {
+        const im = inline[i]
+        if (!im) return
+        if (seenHash.has(im.hash)) return
+        seenHash.add(im.hash)
+        keepP.push(ph); keepI.push({ type: "base64", media_type: im.media_type, data: im.data })
+      })
+      photos.splice(0, photos.length, ...keepP); inline.splice(0, inline.length, ...keepI)
+    }
+    if (!photos.length) throw new Error("사진을 불러오지 못했습니다. 사진 선택을 확인하세요.")
+    const content: any[] = [{ type: "text", text: `상품 정보:\n${JSON.stringify(info, null, 1)}\n\n서로 다른 실제 사진은 ${photos.length}장뿐입니다. 사진 번호는 1~${photos.length}만 쓰고, 같은 사진을 두 번 쓰지 마세요.` }]
     photos.forEach((ph, i) => {
       content.push({ type: "text", text: `사진 ${i + 1} — ${ph.kind}${ph.caption ? ` / 설명: ${ph.caption}` : ""}` })
       if (inline[i]) content.push({ type: "image", source: inline[i] })
