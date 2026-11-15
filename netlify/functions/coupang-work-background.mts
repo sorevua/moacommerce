@@ -760,7 +760,25 @@ async function createNew(job: any) {
         else if (/등급|크기|사이즈|과/.test(t)) v = (nm.match(/특대|대과|중과|소과|특|대|중|소/) || [""])[0]
         if (v) { it.attributes.push({ attributeTypeName: t, attributeValueName: v }); if (a.groupNumber && a.groupNumber !== "NONE") groupsDone.add(a.groupNumber) }
       }
-      it.notices = (mj.notices || []).filter((n: any) => n?.noticeCategoryName && n?.noticeCategoryDetailName).map((n: any) => ({ noticeCategoryName: String(n.noticeCategoryName), noticeCategoryDetailName: String(n.noticeCategoryDetailName), content: String(n.content || "상세페이지 참조") }))
+      // 고시정보: 카테고리 메타에 있는 이름만 쓴다(AI 오타 방지)
+      const ncs: any[] = meta?.noticeCategories || []
+      const raw = (mj.notices || []).filter((n: any) => n?.noticeCategoryDetailName)
+      const pickCat = ncs.find((c: any) => raw.some((n: any) => n.noticeCategoryName === c.noticeCategoryName)) || ncs.find((c: any) => /농수|농산/.test(c.noticeCategoryName)) || ncs[0]
+      if (pickCat) {
+        const dets: any[] = pickCat.noticeCategoryDetailNames || []
+        it.notices = dets.map((d: any) => {
+          const dn = String(d.noticeCategoryDetailName)
+          const hit = raw.find((n: any) => String(n.noticeCategoryDetailName).replace(/\s/g, "") === dn.replace(/\s/g, ""))
+          return { noticeCategoryName: String(pickCat.noticeCategoryName), noticeCategoryDetailName: dn, content: String(hit?.content || "상세페이지 참조").slice(0, 500) }
+        })
+      } else it.notices = raw.map((n: any) => ({ noticeCategoryName: String(n.noticeCategoryName), noticeCategoryDetailName: String(n.noticeCategoryDetailName), content: String(n.content || "상세페이지 참조") }))
+      // 총 중량 속성이 카테고리에 있으면 옵션 이름의 kg으로 채운다
+      for (const a of (meta?.attributes || [])) {
+        const t = String(a.attributeTypeName)
+        if (!/총\s*중량/.test(t) || it.attributes.some((x: any) => x.attributeTypeName === t)) continue
+        const kg = String(o.name).match(/(\d+(?:\.\d+)?)\s*kg/i)
+        if (kg) it.attributes.push({ attributeTypeName: t, attributeValueName: `${kg[1]}kg` })
+      }
       const extra = (job.photos || []).filter((u: string) => /^https:\/\/[^\s"'<>]+$/.test(u)).slice(0, 9)
       it.images = [{ imageOrder: 0, imageType: "REPRESENTATION", vendorPath: mainUrl }, ...extra.map((u: string, i: number) => ({ imageOrder: i + 1, imageType: "DETAIL", vendorPath: u }))]
       it.contents = extra.length
