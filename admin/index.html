@@ -195,8 +195,13 @@ function renderProductSelect() {
 }
 function salePrice(supply, channel) {
   const s = SETTINGS, cost = supply + Number(s.extraShipping || 0), unit = Number(s.roundUnit || 100)
-  const fee = channel === "쿠팡" ? s.coupangFee * (1 + s.vatOnFee) : channel === "네이버" ? (s.naverSalesFee + s.naverPayFee) * (1 + s.vatOnFee) : 0
-  return Math.ceil(cost / (1 - fee - s.marginRate) / unit) * unit
+  const up = x => Math.ceil(x / unit) * unit
+  const cp = up(cost / (1 - s.coupangFee * (1 + s.vatOnFee) - s.marginRate))
+  const np = up(cost / (1 - (s.naverSalesFee + s.naverPayFee) * (1 + s.vatOnFee) - s.marginRate))
+  const same = Number(s.sameMarketPrice) ? Math.max(cp, np) : null
+  if (channel === "쿠팡") return same ?? cp
+  if (channel === "네이버") return same ?? np
+  return up(cost / (1 - Number(s.directMarginRate ?? s.marginRate)))
 }
 function supplyOf(vendorId, productName) { return VENDORS.find(v => v.id === vendorId)?.products.find(p => p.name === productName)?.supplyPrice || 0 }
 function fillSalePrice() {
@@ -317,7 +322,7 @@ async function makePO(vid) {
 function renderVendors() {
   $("#vendorList").innerHTML = VENDORS.map(v => `<button data-v="${esc(v.id)}" class="${v.id === currentVendorId ? "on" : ""}">${esc(v.name)}</button>`).join("") + `<button data-v="__new">+ 새 업체</button>`
   $$("#vendorList button").forEach(b => b.onclick = () => { currentVendorId = b.dataset.v; renderVendors() })
-  const v = currentVendorId === "__new" ? { name: "", status: "협의 중", products: [{ name: "", supplyPrice: 0 }], order: { method: "이메일", email: "", cutoff: "", prepay: false, csChannel: "", fixedMessage: "" }, sender: { name: "", address: "", phone: "" }, extraInfo: "", photoIds: [] } : VENDORS.find(x => x.id === currentVendorId)
+  const v = currentVendorId === "__new" ? { name: "", status: "협의 중", products: [{ name: "", supplyPrice: 0 }], order: { method: "이메일", email: "", cutoff: "", prepay: false, csChannel: "", fixedMessage: "" }, sender: { name: "", phone: "", zip: "", address: "" }, returnInfo: { sameAsSender: true }, extraInfo: "", photoIds: [] } : VENDORS.find(x => x.id === currentVendorId)
   if (!v) { $("#vendorForm").innerHTML = "<p class='note'>업체를 선택하세요.</p>"; return }
   const isNew = currentVendorId === "__new"
   $("#vendorForm").innerHTML = `
@@ -345,12 +350,24 @@ function renderVendors() {
     </div>
     ${v.order?.columns ? `<p class="note" style="margin-top:8px">발주서 열: ${v.order.columns.map(c => esc(c.header)).join(" · ")}</p>` : ""}
 
-    <h3>보내는분 (출고지 — 쿠팡 WING 등록 정보 그대로)</h3>
+    <h3>보내는분 (출고지 — 쿠팡 WING 등록 정보와 동일하게)</h3>
     <div class="grid">
-      <div><label>성명</label><input id="v_sname" value="${esc(v.sender?.name)}"></div>
+      <div><label>보내는분 성명</label><input id="v_sname" value="${esc(v.sender?.name)}"></div>
       <div><label>전화번호</label><input id="v_sphone" value="${esc(v.sender?.phone)}"></div>
+      <div><label>우편번호</label><input id="v_szip" value="${esc(v.sender?.zip)}"></div>
     </div>
-    <div style="margin-top:12px"><label>주소</label><input id="v_saddr" value="${esc(v.sender?.address)}"></div>
+    <div style="margin-top:12px"><label>출고지 주소</label><input id="v_saddr" value="${esc(v.sender?.address)}"></div>
+
+    <h3>반품 정보</h3>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:600"><input type="checkbox" id="v_rsame" style="width:auto" ${v.returnInfo?.sameAsSender !== false ? "checked" : ""}> 출고지와 동일</label>
+    <div id="returnFields" class="${v.returnInfo?.sameAsSender !== false ? "hidden" : ""}" style="margin-top:10px">
+      <div class="grid">
+        <div><label>반품 받는 분</label><input id="v_rname" value="${esc(v.returnInfo?.name)}"></div>
+        <div><label>반품 전화번호</label><input id="v_rphone" value="${esc(v.returnInfo?.phone)}"></div>
+        <div><label>반품 우편번호</label><input id="v_rzip" value="${esc(v.returnInfo?.zip)}"></div>
+      </div>
+      <div style="margin-top:12px"><label>반품 주소</label><input id="v_raddr" value="${esc(v.returnInfo?.address)}"></div>
+    </div>
 
     <h3>추가 정보 (상세페이지에 활용)</h3>
     <textarea id="v_extra" placeholder="한 줄에 하나씩. 예) 방송 측정 당시 당도 17.7 Brix (개체별 차이 있음)">${esc(v.extraInfo)}</textarea>
@@ -370,6 +387,7 @@ function renderVendors() {
 
   $("#addProd").onclick = () => { $("#prodRows").insertAdjacentHTML("beforeend", `<tr><td><input class="p_name"></td><td><input class="p_price" type="number" min="0" value="0" style="text-align:right"></td><td><button class="btn small p_del">삭제</button></td></tr>`); bindProdDel() }
   bindProdDel()
+  $("#v_rsame").onchange = e => $("#returnFields").classList.toggle("hidden", e.target.checked)
   $("#saveVendor").onclick = () => saveVendor(isNew)
   if (!isNew) {
     $("#delVendor").onclick = async () => {
@@ -409,7 +427,8 @@ async function saveVendor(isNew, quiet) {
   const body = {
     name: $("#v_name").value.trim(), status: $("#v_status").value, products,
     order: { ...(prev.order || {}), method: $("#v_method").value, email: $("#v_email").value.trim(), cutoff: $("#v_cutoff").value, csChannel: $("#v_cs").value, fixedMessage: $("#v_fixed").value, prepay: $("#v_prepay").value === "1" },
-    sender: { ...(prev.sender || {}), name: $("#v_sname").value.trim(), phone: $("#v_sphone").value.trim(), address: $("#v_saddr").value.trim() },
+    sender: { ...(prev.sender || {}), name: $("#v_sname").value.trim(), phone: $("#v_sphone").value.trim(), zip: $("#v_szip").value.trim(), address: $("#v_saddr").value.trim() },
+    returnInfo: $("#v_rsame").checked ? { sameAsSender: true, name: "", phone: "", zip: "", address: "" } : { sameAsSender: false, name: $("#v_rname").value.trim(), phone: $("#v_rphone").value.trim(), zip: $("#v_rzip").value.trim(), address: $("#v_raddr").value.trim() },
     extraInfo: $("#v_extra").value,
   }
   if (!body.name) { toast("업체명을 입력하세요."); throw new Error("업체명 없음") }
@@ -434,9 +453,10 @@ function shrink(file, max = 1600) {
 
 // ---------- 설정 ----------
 const SETTING_FIELDS = [
-  ["marginRate", "목표 마진율 (판매가 대비 %)", true], ["coupangFee", "쿠팡 판매수수료 % (VAT 별도)", true],
+  ["marginRate", "쿠팡·네이버 목표 마진율 (판매가 대비 %)", true], ["directMarginRate", "카톡·밴드 직판 마진율 (%)", true], ["coupangFee", "쿠팡 판매수수료 % (VAT 별도)", true],
   ["naverSalesFee", "네이버 판매수수료 % (VAT 별도)", true], ["naverPayFee", "네이버 결제수수료 % (VAT 별도)", true],
   ["vatOnFee", "수수료 부가세 %", true], ["extraShipping", "공급가 외 추가 배송비 (원)", false], ["roundUnit", "가격 올림 단위 (원)", false],
+  ["sameMarketPrice", "쿠팡·네이버 같은 가격 (1=예, 0=아니오)", false],
 ]
 function renderSettings() {
   $("#settingsGrid").innerHTML = SETTING_FIELDS.map(([k, label, pct]) => `<div><label>${label}</label><input type="number" step="any" data-k="${k}" data-pct="${pct ? 1 : 0}" value="${pct ? +(SETTINGS[k] * 100).toFixed(4) : SETTINGS[k]}"></div>`).join("")

@@ -22,6 +22,8 @@ const DEFAULT_SETTINGS = {
   naverPayFee: 0.033, // 가정값 — 일반 등급
   vatOnFee: 0.1,
   roundUnit: 100,
+  directMarginRate: 0.2, // 카톡·밴드 직판 마진 (가정값, 마켓보다 조금 높게)
+  sameMarketPrice: 1, // 1이면 쿠팡·네이버를 같은 판매가(둘 중 높은 값)로 맞춤
 }
 
 // 발주서 열 필드 이름
@@ -59,7 +61,8 @@ function seedVendor() {
       fixedMessage: "하우스감귤 취급 및 파손주의",
       columns: JEJU_DAMEUN_COLUMNS,
     },
-    sender: { name: "", address: "", phone: "", note: "쿠팡 WING 등록 출고지 정보 그대로 입력" },
+    sender: { name: "", phone: "", zip: "63617", address: "제주특별자치도 서귀포시 남원읍 태신삼석로73번길 76-15" },
+    returnInfo: { sameAsSender: true, name: "", phone: "", zip: "", address: "" },
     extraInfo: "",
     photoIds: [] as string[],
     listing: null,
@@ -73,6 +76,16 @@ async function ensureSeed() {
   if (blobs.length === 0) {
     const v = seedVendor()
     await vendors().setJSON(v.id, v)
+    return
+  }
+  // 제주담은귤 출고지 주소·우편번호가 비어 있으면 업체가 알려준 정보로 채움 (1회)
+  const j: any = await vendors().get("jeju-dameun", { type: "json" })
+  if (j && !j.sender?.address) {
+    j.sender = { ...(j.sender || {}), zip: "63617", address: "제주특별자치도 서귀포시 남원읍 태신삼석로73번길 76-15" }
+    delete j.sender.note
+    j.returnInfo = j.returnInfo || { sameAsSender: true, name: "", phone: "", zip: "", address: "" }
+    j.updatedAt = now()
+    await vendors().setJSON(j.id, j)
   }
 }
 
@@ -88,9 +101,10 @@ function priceFor(supply: number, s: typeof DEFAULT_SETTINGS) {
   const roundUp = (x: number) => Math.ceil(x / unit) * unit
   const cFee = s.coupangFee * (1 + s.vatOnFee)
   const nFee = (s.naverSalesFee + s.naverPayFee) * (1 + s.vatOnFee)
-  const coupang = roundUp(cost / (1 - cFee - s.marginRate))
-  const naver = roundUp(cost / (1 - nFee - s.marginRate))
-  const direct = roundUp(cost / (1 - s.marginRate)) // 카톡·밴드 직접 판매(마켓 수수료 없음)
+  let coupang = roundUp(cost / (1 - cFee - s.marginRate))
+  let naver = roundUp(cost / (1 - nFee - s.marginRate))
+  if (Number(s.sameMarketPrice)) coupang = naver = Math.max(coupang, naver)
+  const direct = roundUp(cost / (1 - Number(s.directMarginRate ?? s.marginRate))) // 카톡·밴드 직판(마켓 수수료 없음)
   return {
     direct,
     directProfit: Math.round(direct - cost),
