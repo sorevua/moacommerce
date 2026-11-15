@@ -25,7 +25,13 @@ export default async (req: Request) => {
       usable: "true",
       placeAddresses: [{ addressType: "JIBUN", countryCode: "KR", companyContactNumber: "010-8587-0003", phoneNumber2: "", returnZipCode: "57707", returnAddress: "전라남도 광양시 진상면 신시3길", returnAddressDetail: "13-23" }],
     }
-    const r = await call("POST", `/v2/providers/openapi/apis/api/v5/vendors/${vendorId()}/outboundShippingCenters`, "", body)
+    let r: any = null, lastErr = ""
+    for (const ph of ["+82-10-8587-0003", "+821085870003", "+82 10-8587-0003"]) {
+      body.placeAddresses[0].companyContactNumber = ph
+      try { r = await call("POST", `/v2/providers/openapi/apis/api/v5/vendors/${vendorId()}/outboundShippingCenters`, "", body); break }
+      catch (e: any) { lastErr = String(e?.message || e); if (!/phone|E\.164/i.test(lastErr)) throw e }
+    }
+    if (!r) throw new Error(lastErr)
     const code = r?.data?.resultCode === "SUCCESS" ? String(r.data.resultMessage) : ""
     const out = { at: new Date().toISOString(), code, raw: r }
     await st.setJSON("outbound-gwangyang", out)
