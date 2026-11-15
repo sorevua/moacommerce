@@ -49,7 +49,7 @@ export async function call(method: "GET" | "POST" | "PATCH" | "PUT", path: strin
     method,
     url,
     auth: authorization(method, path, query),
-    body: body === undefined ? "" : stringifyWithIds(body),
+    body: body === undefined ? (method === "GET" ? "" : "{}") : stringifyWithIds(body),
   }
   const res = await fetch(env("MAKE_RELAY_URL"), {
     method: "POST",
