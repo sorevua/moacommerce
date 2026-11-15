@@ -741,7 +741,9 @@ async function createNew(job: any) {
         const nm = String(o.name), t = String(a.attributeTypeName)
         let v = ""
         const kg = nm.match(/(\d+(?:\.\d+)?)\s*kg/i)
-        if (/중량|무게/.test(t) && kg) v = /g$/.test(a.basicUnit || "") && a.basicUnit === "g" ? `${Number(kg[1]) * 1000}g` : `${kg[1]}kg`
+        const per = (job.perPieceGram || {})[nm]
+        if (/개당/.test(t)) { if (per) v = `${per}g` }
+        else if (/중량|무게/.test(t) && kg) v = a.basicUnit === "g" ? `${Number(kg[1]) * 1000}g` : `${kg[1]}kg`
         else if (/수량/.test(t)) v = "1개"
         else if (/등급|크기|사이즈|과/.test(t)) v = (nm.match(/특대|대과|중과|소과|특|대|중|소/) || [""])[0]
         if (v) { it.attributes.push({ attributeTypeName: t, attributeValueName: v }); if (a.groupNumber && a.groupNumber !== "NONE") groupsDone.add(a.groupNumber) }
@@ -755,6 +757,9 @@ async function createNew(job: any) {
       it.searchTags = tags
       return it
     })
+    body.brand = String(body.brand || job.brand || "모아커머스")
+    if (!body.manufacture) body.manufacture = body.brand
+    log.push(`브랜드: ${body.brand} / 옵션1 속성: ${JSON.stringify(body.items[0]?.attributes || [])}`)
     log.push("쿠팡에 임시저장 요청 중…"); await save({ running: true })
     const r = await createProduct(body)
     const id = String(r?.data ?? "")
