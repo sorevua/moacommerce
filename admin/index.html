@@ -567,27 +567,319 @@ function loadH2I() {
   _h2i = new Promise((ok, no) => { const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"; s.onload = ok; s.onerror = () => no(new Error("이미지 변환 도구를 불러오지 못했습니다.")); document.head.appendChild(s) })
   return _h2i
 }
-async function renderDesign(d, themeKey, onStep, style) {
-  await loadH2I()
-  await document.fonts.ready
-  const host = document.createElement("div")
-  host.style.cssText = "position:fixed;left:-10000px;top:0;width:780px;background:#fff;z-index:-1"
-  { const used = new Set([d.hero?.photo, d.proof?.photo, ...(d.points || []).map(x => x.photo)].filter(Boolean)); d.gallery = (d.gallery || []).filter(g => g.photo && !used.has(g.photo) && (used.add(g.photo), true)) }
-  host.innerHTML = (style === "card" ? cardSections(d, themeKey) : designSections(d, themeKey)).join("")
-  document.body.appendChild(host)
-  try {
-    await Promise.all([...host.querySelectorAll("img")].map(im => im.complete && im.naturalWidth ? 0 : new Promise(r => { im.onload = r; im.onerror = () => { im.remove(); r() } })))
-    const fontCSS = await htmlToImage.getFontEmbedCSS(host).catch(() => "")
+// ================= 상세페이지 캔버스 엔진: 글자 폭을 직접 재서 배치하므로 겹침·잘림이 생기지 않는다 =================
+const PG = { W: 780, S: 1.5, FONT: "Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif" }
+function pgLoadImg(u) {
+  return new Promise(res => { if (!u) return res(null); const im = new Image(); im.onload = () => res(im.naturalWidth ? im : null); im.onerror = () => res(null); im.src = proxied(u) })
+}
+// 비슷한 사진 찾기용 지문(크기·압축이 달라도 같은 사진이면 거의 같은 값)
+function pgHash(im) {
+  const c = document.createElement("canvas"); c.width = 9; c.height = 8
+  const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, 0, 0, 9, 8)
+  const d = x.getImageData(0, 0, 9, 8).data, g = []
+  for (let i = 0; i < d.length; i += 4) g.push(d[i] * .299 + d[i + 1] * .587 + d[i + 2] * .114)
+  let bits = ""
+  for (let r = 0; r < 8; r++) for (let k = 0; k < 8; k++) bits += g[r * 9 + k] > g[r * 9 + k + 1] ? "1" : "0"
+  return bits
+}
+const pgDist = (a, b) => { let n = 0; for (let i = 0; i < 64; i++) if (a[i] !== b[i]) n++; return n }
+async function pgUniqueUrls(urls) {
+  const keep = [], hashes = []
+  for (const u of urls) {
+    const im = await pgLoadImg(u); if (!im) continue
+    let h; try { h = pgHash(im) } catch { keep.push(u); continue }
+    if (hashes.some(x => pgDist(x, h) <= 8)) continue
+    hashes.push(h); keep.push(u)
+  }
+  return keep
+}
+class PgPage {
+  constructor(bg) {
+    this.c = document.createElement("canvas"); this.c.width = PG.W * PG.S; this.c.height = 5200 * PG.S
+    this.x = this.c.getContext("2d"); this.x.scale(PG.S, PG.S); this.y = 0; this.bg = bg || "#fff"
+    this.x.fillStyle = this.bg; this.x.fillRect(0, 0, PG.W, 5200); this.x.textBaseline = "top"
+  }
+  font(size, weight) { this.x.font = `${weight || 400} ${size}px ${PG.FONT}`; try { this.x.letterSpacing = `${-size * 0.025}px` } catch {} }
+  wrap(text, maxW) {
     const out = []
-    const secs = [...host.children]
-    for (let i = 0; i < secs.length; i++) {
-      onStep && onStep(`이미지 만드는 중 ${i + 1}/${secs.length}`)
-      const dataUrl = await htmlToImage.toJpeg(secs[i], { quality: 0.9, pixelRatio: 1, backgroundColor: "#ffffff", fontEmbedCSS: fontCSS, cacheBust: false })
-      out.push(dataUrl)
+    for (const para of String(text ?? "").split(/\n/)) {
+      let line = ""
+      for (const word of para.split(/\s+/).filter(Boolean)) {
+        const t = line ? line + " " + word : word
+        if (this.x.measureText(t).width <= maxW) { line = t; continue }
+        if (line) out.push(line)
+        if (this.x.measureText(word).width <= maxW) { line = word; continue }
+        line = ""
+        for (const ch of word) { if (this.x.measureText(line + ch).width > maxW) { out.push(line); line = ch } else line += ch }
+      }
+      if (line) out.push(line)
     }
     return out
-  } finally { host.remove() }
+  }
+  // 글자 크기를 줄여 가며 maxLines 안에 맞춘다
+  fit(text, maxW, size, weight, maxLines, min) {
+    let s = size, lines
+    for (;;) { this.font(s, weight); lines = this.wrap(text, maxW); if (lines.length <= maxLines || s <= (min || size * 0.6)) break; s -= 2 }
+    return { size: s, lines }
+  }
+  // 글 블록을 그리고 높이를 돌려준다. o: {x,y,w,size,weight,color,align,lh,maxLines,min,measure}
+  text(text, o) {
+    if (!text) return 0
+    const f = o.maxLines ? this.fit(text, o.w, o.size, o.weight, o.maxLines, o.min) : (this.font(o.size, o.weight), { size: o.size, lines: this.wrap(text, o.w) })
+    const lh = Math.round(f.size * (o.lh || 1.4))
+    if (!o.measure) {
+      this.font(f.size, o.weight); this.x.fillStyle = o.color || "#1d1d1d"; this.x.textAlign = o.align || "left"
+      const ax = o.align === "center" ? o.x + o.w / 2 : o.align === "right" ? o.x + o.w : o.x
+      f.lines.forEach((l, i) => {
+        if (o.mark && o.mark.word && l.includes(o.mark.word) && (o.align || "left") === "center") {
+          const full = this.x.measureText(l).width, pre = l.slice(0, l.indexOf(o.mark.word)), sx = ax - full / 2
+          this.x.textAlign = "left"
+          this.x.fillText(pre, sx, o.y + i * lh + (lh - f.size) / 2)
+          this.x.fillStyle = o.mark.color; this.x.fillText(o.mark.word, sx + this.x.measureText(pre).width, o.y + i * lh + (lh - f.size) / 2)
+          this.x.fillStyle = o.color || "#1d1d1d"; this.x.fillText(l.slice(pre.length + o.mark.word.length), sx + this.x.measureText(pre + o.mark.word).width, o.y + i * lh + (lh - f.size) / 2)
+          this.x.textAlign = "center"
+        } else this.x.fillText(l, ax, o.y + i * lh + (lh - f.size) / 2)
+      })
+    }
+    return f.lines.length * lh
+  }
+  rr(x, y, w, h, r) { const c = this.x; c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath() }
+  box(x, y, w, h, r, fill, stroke, lw, dash) {
+    this.rr(x, y, w, h, r || 0)
+    if (fill) { this.x.fillStyle = fill; this.x.fill() }
+    if (stroke) { this.x.save(); this.x.strokeStyle = stroke; this.x.lineWidth = lw || 2; if (dash) this.x.setLineDash(dash); this.x.stroke(); this.x.restore() }
+  }
+  shadowBox(x, y, w, h, r, fill) { this.x.save(); this.x.shadowColor = "rgba(0,0,0,.08)"; this.x.shadowBlur = 24; this.x.shadowOffsetY = 8; this.box(x, y, w, h, r, fill); this.x.restore() }
+  // 사진을 칸에 꽉 채워(가운데 기준으로 잘라) 그린다
+  cover(im, x, y, w, h, r) {
+    if (!im) { this.box(x, y, w, h, r || 0, "#eee"); return }
+    const s = Math.max(w / im.naturalWidth, h / im.naturalHeight), sw = w / s, sh = h / s
+    this.x.save(); this.rr(x, y, w, h, r || 0); this.x.clip()
+    this.x.drawImage(im, (im.naturalWidth - sw) / 2, (im.naturalHeight - sh) / 2, sw, sh, x, y, w, h); this.x.restore()
+  }
+  pill(text, cx, y, o) {
+    this.font(o.size, 800); const w = this.x.measureText(text).width + o.size * 1.6, h = o.size * 2
+    this.box(cx - w / 2, y, w, h, h / 2, o.bg, o.stroke, 2)
+    this.x.fillStyle = o.color; this.x.textAlign = "center"; this.x.fillText(text, cx, y + (h - o.size) / 2)
+    return h
+  }
+  aiTag(x, y, w, h) { this.font(13, 600); this.x.textAlign = "right"; const t = "연출 이미지", tw = this.x.measureText(t).width; this.box(x + w - tw - 30, y + h - 38, tw + 18, 24, 6, "rgba(0,0,0,.4)"); this.x.fillStyle = "rgba(255,255,255,.9)"; this.x.fillText(t, x + w - 21, y + h - 33) }
+  grad(x, y, w, h, stops) { const g = this.x.createLinearGradient(0, y, 0, y + h); stops.forEach(([p, c]) => g.addColorStop(p, c)); this.x.fillStyle = g; this.x.fillRect(x, y, w, h) }
+  fillTo(y0, y1, color) { this.x.fillStyle = color; this.x.fillRect(0, y0, PG.W, y1 - y0) }
+  out(h) {
+    const o = document.createElement("canvas"); o.width = this.c.width; o.height = Math.round(h * PG.S)
+    o.getContext("2d").drawImage(this.c, 0, 0); return o.toDataURL("image/jpeg", 0.9)
+  }
 }
+const pgRgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})` }
+
+async function pgRender(d, themeKey, onStep) {
+  const t = DTHEME[themeKey] || DTHEME.citrus, M = t.main, W = PG.W
+  await Promise.all([400, 500, 600, 700, 800, 900].map(w => document.fonts.load(`${w} 30px Pretendard`, "가나다 ABC 123").catch(() => {})))
+  const sc = d.scenesOut || {}, h = d.hero || {}
+  // 사진 불러오기 + 같은 사진 중복 제거
+  const cache = new Map(), hashes = []
+  const load = async (u, allowDup) => {
+    if (!u) return null
+    if (cache.has(u)) return allowDup ? cache.get(u) : null
+    const im = await pgLoadImg(u); if (!im) { cache.set(u, null); return null }
+    if (!allowDup) { let hs; try { hs = pgHash(im) } catch {} ; if (hs) { if (hashes.some(x => pgDist(x, hs) <= 8)) { cache.set(u, null); return null } hashes.push(hs) } }
+    cache.set(u, im); return im
+  }
+  const heroAi = !!sc.hero
+  const heroIm = (await load(sc.hero)) || (await load(h.photo))
+  const proofIm = d.proof ? await load(d.proof.photo) : null
+  const ptIms = []; for (const p of d.points || []) ptIms.push(await load(p.photo))
+  const gal = []; for (const g of d.gallery || []) { const im = await load(g.photo); if (im) gal.push({ ...g, im }) }
+  const sIntro = await load(sc.intro), sOpt = await load(sc.option), sGuide = await load(sc.guide), sBrand = await load(sc.brand)
+  const pages = []
+  const push = (p, hgt) => pages.push(p.out(hgt))
+  const head = (p, y, small, big, color) => {
+    let yy = y
+    if (small) yy += p.text(small, { x: 60, y: yy, w: W - 120, size: 26, weight: 600, color: color ? pgRgba("#ffffff", .85) : "#666", align: "center", maxLines: 1 }) + 6
+    yy += p.text(big, { x: 50, y: yy, w: W - 100, size: 50, weight: 900, color: color || "#1d1d1d", align: "center", maxLines: 2, lh: 1.25 })
+    return yy - y
+  }
+  // 1. 첫 화면
+  {
+    const p = new PgPage(t.deep), H = 1000
+    if (heroIm) p.cover(heroIm, 0, 0, W, H); else p.fillTo(0, H, t.deep)
+    p.grad(0, H - 620, W, 620, [[0, pgRgba(t.deep, 0)], [.45, pgRgba(t.deep, .72)], [1, pgRgba(t.deep, .97)]])
+    if (heroAi && heroIm) p.aiTag(0, 0, W, 60)
+    // 아래에서부터 쌓는다 (글자 높이를 먼저 잰 뒤 배치)
+    const subH = h.sub ? p.text(h.sub, { x: 70, y: 0, w: W - 140, size: 25, weight: 500, lh: 1.5, maxLines: 2, measure: true }) : 0
+    const hl = p.fit(h.headline || d.title || "", W - 100, 76, 900, 2, 44), hlH = hl.lines.length * Math.round(hl.size * 1.2)
+    const eyH = h.eyebrow ? 40 : 0, bdH = h.badge ? 44 : 0
+    let y = H - 70 - subH - (subH ? 20 : 0) - hlH - (eyH ? eyH + 8 : 0) - (bdH ? bdH + 22 : 0)
+    if (h.badge) { p.pill(h.badge, W / 2, y, { size: 21, bg: M, color: "#fff" }); y += bdH + 22 }
+    if (h.eyebrow) { p.text(h.eyebrow, { x: 60, y, w: W - 120, size: 26, weight: 600, color: "rgba(255,255,255,.9)", align: "center", maxLines: 1 }); y += eyH + 8 }
+    p.text(h.headline || d.title || "", { x: 50, y, w: W - 100, size: 76, weight: 900, color: "#fff", align: "center", maxLines: 2, min: 44, lh: 1.2, mark: h.highlight ? { word: h.highlight, color: t.soft } : null }); y += hlH + 20
+    if (h.sub) p.text(h.sub, { x: 70, y, w: W - 140, size: 25, weight: 500, color: "rgba(255,255,255,.88)", align: "center", lh: 1.5, maxLines: 2 })
+    push(p, H)
+  }
+  // 2. 강점 띠 + 소개
+  {
+    const kw = (d.keywords || []).filter(Boolean).slice(0, 3)
+    if (kw.length || d.intro) {
+      const p = new PgPage("#fff"); let y = 0
+      if (kw.length) {
+        p.fillTo(0, 110, M); const cw = W / kw.length
+        kw.forEach((k, i) => { p.text(k, { x: i * cw + 10, y: 38, w: cw - 20, size: 28, weight: 800, color: "#fff", align: "center", maxLines: 1, min: 18 }); if (i) { p.x.fillStyle = "rgba(255,255,255,.35)"; p.x.fillRect(i * cw, 34, 1, 42) } })
+        y = 110
+      }
+      if (d.intro) { y += 80; p.x.fillStyle = M; p.x.fillRect(W / 2 - 22, y, 44, 4); y += 34; y += p.text(d.intro, { x: 80, y, w: W - 160, size: 29, weight: 600, color: "#333", align: "center", lh: 1.65 }); y += 80 }
+      push(p, y)
+    }
+  }
+  // 3. 걱정 → 답
+  {
+    const wr = (d.worries || []).filter(Boolean).slice(0, 4)
+    if (wr.length) {
+      const p = new PgPage(t.band); let y = 90
+      y += head(p, y, "온라인으로 과일 살 때", "이런 걱정 해 보셨나요?") + 46
+      for (const w of wr) {
+        const th = p.text(w, { x: 0, y: 0, w: W - 100 - 130, size: 26, weight: 700, lh: 1.45, measure: true }), bh = Math.max(96, th + 52)
+        p.shadowBox(50, y, W - 100, bh, 22, "#fff")
+        p.x.beginPath(); p.x.arc(100, y + bh / 2, 23, 0, 7); p.x.fillStyle = "#FDE2E2"; p.x.fill()
+        p.x.strokeStyle = "#E03131"; p.x.lineWidth = 4; p.x.lineCap = "round"; p.x.beginPath(); p.x.moveTo(92, y + bh / 2 - 8); p.x.lineTo(108, y + bh / 2 + 8); p.x.moveTo(108, y + bh / 2 - 8); p.x.lineTo(92, y + bh / 2 + 8); p.x.stroke()
+        p.text(w, { x: 144, y: y + (bh - th) / 2, w: W - 100 - 130, size: 26, weight: 700, color: "#333", lh: 1.45 })
+        y += bh + 16
+      }
+      y += 40
+      if (d.answer) { const ah = p.text(d.answer, { x: 60, y: 0, w: W - 120, size: 31, weight: 900, lh: 1.45, measure: true }); p.fillTo(y, y + ah + 84, M); p.text(d.answer, { x: 60, y: y + 42, w: W - 120, size: 31, weight: 900, color: "#fff", align: "center", lh: 1.45 }); y += ah + 84 } else y += 50
+      push(p, y)
+    }
+  }
+  // 4. 이유
+  {
+    const pts = (d.points || []).filter(x => x && x.title)
+    if (pts.length) {
+      const p = new PgPage("#fff"); let y = 90
+      y += head(p, y, d.brand?.name || "", `특별한 ${pts.length}가지 이유`) + 20
+      p.x.fillStyle = M; p.x.fillRect(W / 2 - 22, y, 44, 4); y += 50
+      pts.forEach((pt, i) => {
+        const im = ptIms[i], tx = im ? 50 + 250 + 30 : 50 + 110 + 30, tw = W - 50 - tx
+        const tH = p.text(pt.title, { x: 0, y: 0, w: tw, size: 34, weight: 900, lh: 1.3, maxLines: 2, measure: true }), dH = p.text(pt.desc, { x: 0, y: 0, w: tw, size: 23, weight: 400, lh: 1.55, measure: true })
+        const textH = 36 + 14 + tH + 10 + dH, rowH = Math.max(im ? 250 : 110, textH)
+        if (i) { p.x.save(); p.x.strokeStyle = "#e3e3e3"; p.x.setLineDash([6, 6]); p.x.beginPath(); p.x.moveTo(50, y); p.x.lineTo(W - 50, y); p.x.stroke(); p.x.restore() }
+        y += 30
+        if (im) p.cover(im, 50, y + (rowH - 250) / 2, 250, 250, 22)
+        else { p.x.beginPath(); p.x.arc(105, y + rowH / 2, 55, 0, 7); p.x.fillStyle = t.soft; p.x.fill(); p.text(String(i + 1), { x: 50, y: y + rowH / 2 - 30, w: 110, size: 50, weight: 900, color: M, align: "center" }) }
+        let ty = y + (rowH - textH) / 2
+        p.font(18, 900); const pw = p.x.measureText(`POINT ${i + 1}`).width + 28; p.box(tx, ty, pw, 36, 18, M); p.x.fillStyle = "#fff"; p.x.textAlign = "left"; p.x.fillText(`POINT ${i + 1}`, tx + 14, ty + 9); ty += 50
+        ty += p.text(pt.title, { x: tx, y: ty, w: tw, size: 34, weight: 900, lh: 1.3, maxLines: 2 }) + 10
+        p.text(pt.desc, { x: tx, y: ty, w: tw, size: 23, weight: 400, color: "#555", lh: 1.55 })
+        y += rowH + 30
+      })
+      push(p, y + 60)
+    }
+  }
+  // 5. 측정 근거
+  {
+    const pr = d.proof
+    if (pr && pr.value) {
+      const p = new PgPage(M); let y = 90
+      y += p.text(pr.label || "측정 예시", { x: 60, y, w: W - 120, size: 29, weight: 800, color: "rgba(255,255,255,.92)", align: "center", maxLines: 2 }) + 18
+      p.font(150, 900); const vw = p.x.measureText(String(pr.value)).width; p.font(54, 900); const uw = p.x.measureText(" " + (pr.unit || "")).width
+      const sx = (W - vw - uw) / 2; p.font(150, 900); p.x.fillStyle = "#fff"; p.x.textAlign = "left"; p.x.fillText(String(pr.value), sx, y); p.font(54, 900); p.x.fillText(" " + (pr.unit || ""), sx + vw, y + 84); y += 170
+      if (proofIm) { p.box(96, y + 16, W - 192, 600, 30, "#fff"); p.cover(proofIm, 104, y + 24, W - 208, 584, 24); y += 640 }
+      y += 14 + p.text(pr.note, { x: 70, y: y + 14, w: W - 140, size: 21, weight: 500, color: "rgba(255,255,255,.9)", align: "center", lh: 1.6 })
+      push(p, y + 80)
+    }
+  }
+  // 6. 스토리
+  {
+    const st = d.story
+    if (st && (st.title || st.text)) {
+      const p = new PgPage(t.deep); let y = 0
+      if (sIntro) { p.cover(sIntro, 0, 0, W, 640); p.grad(0, 340, W, 300, [[0, pgRgba(t.deep, 0)], [1, t.deep]]); p.aiTag(0, 0, W, 60); y = 600 } else y = 100
+      if (st.label) y += p.pill(st.label, W / 2, y, { size: 21, bg: M, color: "#fff" }) + 26
+      y += p.text(st.title, { x: 60, y, w: W - 120, size: 52, weight: 900, color: "#fff", align: "center", lh: 1.25, maxLines: 2 }) + 18
+      y += p.text(st.text, { x: 80, y, w: W - 160, size: 25, weight: 400, color: "rgba(255,255,255,.85)", align: "center", lh: 1.65 })
+      push(p, y + 100)
+    }
+  }
+  // 7. 사진 (사진 아래에 글 — 사진 위에 글자를 올리지 않는다)
+  gal.forEach((g, i) => {
+    const p = new PgPage("#fff"); let y = i === 0 ? 90 : 30
+    if (i === 0) { y += head(p, y, "있는 그대로 보여 드립니다", "실제 모습") + 46 }
+    const ar = g.im.naturalHeight / g.im.naturalWidth, ph = Math.round((W - 80) * Math.min(1.25, Math.max(0.62, ar)))
+    p.cover(g.im, 40, y, W - 80, ph, 26); y += ph
+    if (g.title) y += 30 + p.text(g.title, { x: 60, y: y + 30, w: W - 120, size: 32, weight: 900, align: "center", maxLines: 2 })
+    if (g.caption) y += 10 + p.text(g.caption, { x: 70, y: y + 10, w: W - 140, size: 23, weight: 400, color: "#666", align: "center", lh: 1.55 })
+    push(p, y + (i === gal.length - 1 ? 90 : 30))
+  })
+  // 8. 구성
+  {
+    const op = (d.options || []).filter(o => o && o.name)
+    if (op.length) {
+      const p = new PgPage("#fff"); let y = 0
+      if (sOpt) { p.cover(sOpt, 0, 0, W, 520); p.aiTag(0, 0, W, 520); y = 520 }
+      y += 90; y += head(p, y, "원하는 만큼 고르세요", "옵션 구성 안내") + 46
+      op.forEach((o, i) => {
+        const last = i === op.length - 1, nw = 230, fw = W - 80 - nw - 70
+        const fh = p.text(o.fit, { x: 0, y: 0, w: fw, size: 25, weight: 600, lh: 1.45, measure: true }), bh = Math.max(104, fh + 56)
+        p.box(40, y, W - 80, bh, 22, last ? t.band : "#fff", last ? M : "#e8e8e8", 3)
+        p.text(o.name, { x: 70, y: y + (bh - 46) / 2 - 6, w: nw - 20, size: 42, weight: 900, color: M, maxLines: 1, min: 24 })
+        p.text(o.fit, { x: 40 + nw + 30, y: y + (bh - fh) / 2, w: fw, size: 25, weight: 600, color: "#444", lh: 1.45 })
+        y += bh + 16
+      })
+      y += 14 + p.text("※ 표기된 중량은 상자를 포함한 무게입니다", { x: 60, y: y + 14, w: W - 120, size: 21, weight: 500, color: "#888", align: "center" })
+      push(p, y + 90)
+    }
+  }
+  // 9. 가이드
+  {
+    const gd = (d.guide || []).filter(g => g && g.text)
+    if (gd.length) {
+      const p = new PgPage(t.band); let y = 90
+      y += head(p, y, "받으신 순간부터", "맛있게 드시는 법") + 46
+      if (sGuide) { p.cover(sGuide, 40, y, W - 80, 440, 26); p.aiTag(40, y, W - 80, 440); y += 470 }
+      gd.forEach((g, i) => {
+        const tw = W - 80 - 34 - 52 - 22 - 34
+        const lH = p.text(g.label, { x: 0, y: 0, w: tw, size: 27, weight: 900, measure: true }), tH = p.text(g.text, { x: 0, y: 0, w: tw, size: 23, weight: 400, lh: 1.6, measure: true }), bh = lH + 8 + tH + 60
+        p.shadowBox(40, y, W - 80, bh, 22, "#fff")
+        p.box(74, y + 30, 52, 52, 14, M); p.text(String(i + 1), { x: 74, y: y + 41, w: 52, size: 26, weight: 900, color: "#fff", align: "center" })
+        p.text(g.label, { x: 148, y: y + 30, w: tw, size: 27, weight: 900 }); p.text(g.text, { x: 148, y: y + 30 + lH + 8, w: tw, size: 23, weight: 400, color: "#555", lh: 1.6 })
+        y += bh + 14
+      })
+      push(p, y + 80)
+    }
+  }
+  // 10. 구매 전 확인
+  {
+    const sh = (d.shipping || []).filter(g => g && g.text), nt = (d.notice || []).filter(Boolean)
+    if (sh.length || nt.length) {
+      const p = new PgPage("#fff"); let y = 90
+      y += p.text("구매 전", { x: 60, y, w: W - 120, size: 28, weight: 700, color: "#666", align: "center" }) + 4
+      y += p.text("꼭 확인해 주세요", { x: 60, y, w: W - 120, size: 52, weight: 900, color: M, align: "center" }) + 44
+      const top = y, lw = 170, tw = W - 160 - lw - 24; y += 30
+      sh.forEach((g, i) => {
+        const lH = p.text(g.label, { x: 0, y: 0, w: lw, size: 24, weight: 900, lh: 1.45, measure: true }), tH = p.text(g.text, { x: 0, y: 0, w: tw, size: 23, weight: 400, lh: 1.6, measure: true })
+        if (i) { p.x.fillStyle = "#f0f0f0"; p.x.fillRect(80, y, W - 160, 1) }
+        p.text(g.label, { x: 80, y: y + 20, w: lw, size: 24, weight: 900, color: M, lh: 1.45 }); p.text(g.text, { x: 80 + lw + 24, y: y + 20, w: tw, size: 23, weight: 400, color: "#333", lh: 1.6 })
+        y += Math.max(lH, tH) + 40
+      })
+      if (nt.length) { p.x.fillStyle = "#f0f0f0"; p.x.fillRect(80, y, W - 160, 1); y += 20; for (const n of nt) y += p.text("· " + n, { x: 80, y, w: W - 160, size: 22, weight: 400, color: "#666", lh: 1.6 }) + 8 }
+      y += 22; p.box(44, top, W - 88, y - top, 26, null, M, 3, [10, 8])
+      push(p, y + 90)
+    }
+  }
+  // 11. 판매자
+  if (d.brand && d.brand.name) {
+    const p = new PgPage(t.deep); let y = 0
+    if (sBrand) { p.cover(sBrand, 0, 0, W, 460); p.grad(0, 200, W, 260, [[0, pgRgba(t.deep, 0)], [1, t.deep]]); p.aiTag(0, 0, W, 60); y = 440 } else y = 110
+    y += p.text("SELLER", { x: 60, y, w: W - 120, size: 17, weight: 800, color: M, align: "center" }) + 16
+    y += p.text(d.brand.name, { x: 60, y, w: W - 120, size: 58, weight: 900, color: "#fff", align: "center", maxLines: 1 }) + 22
+    p.x.fillStyle = M; p.x.fillRect(W / 2 - 20, y, 40, 4); y += 30
+    y += p.text(d.brand.text, { x: 80, y, w: W - 160, size: 24, weight: 400, color: "rgba(255,255,255,.85)", align: "center", lh: 1.7 })
+    push(p, y + 110)
+  }
+  onStep && onStep(`이미지 ${pages.length}장 완성`)
+  return pages
+}
+
+async function renderDesign(d, themeKey, onStep) { return pgRender(d, themeKey, onStep) }
 
 async function openCpEdit(spid) {
   const p = (CPP.products || []).find(x => x.sellerProductId === spid); if (!p) return
@@ -690,7 +982,9 @@ async function openCpEdit(spid) {
     const st = $(".e_dst", box); st.textContent = "사진 분석·글 작성·연출 사진 생성 중… (3~8분, 창을 닫지 마세요)"; $(".e_report", box).innerHTML = ""
     const btn = $(".e_design", box); btn.disabled = true
     try {
-      const images = $$(".e_use", box).filter(c => c.checked).map(c => c.dataset.u)
+      st.textContent = "같은 사진 걸러내는 중…"
+      const images = await pgUniqueUrls($$(".e_use", box).filter(c => c.checked).map(c => c.dataset.u))
+      st.textContent = "사진 분석·글 작성·연출 사진 생성 중… (3~8분, 창을 닫지 마세요)"
       const brand = $(".e_brand", box).value.trim(), shipping = $(".e_ship", box).value.trim(), facts = $(".e_facts", box).value.trim(), fruitGuide = $(".e_guide", box).value.trim()
       api("coupang/copy", { method: "PUT", body: JSON.stringify({ brand, shipping, facts, guide: { id: spid, text: fruitGuide } }) }).catch(() => {})
       await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "design", sellerProductId: spid, notes: $(".e_notes", box).value, images, extras, brand, shipping, facts, fruitGuide, genImages: $(".e_gen", box)?.checked !== false }) })

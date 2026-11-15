@@ -511,9 +511,33 @@ async function aiDesign(job: any) {
       photos.splice(0, photos.length, ...keepP); inline.splice(0, inline.length, ...keepI)
     }
     if (!photos.length) throw new Error("사진을 불러오지 못했습니다. 사진 선택을 확인하세요.")
+    // 1차 판독: 사진마다 글자가 박혔는지·서로 같은 사진인지 따로 판정하고, 깨끗한 사진만 남긴다
+    const clientA = new Anthropic()
+    const sortNotes: string[] = []
+    try {
+      const sc: any[] = [{ type: "text", text: "사진을 하나씩 판정하세요." }]
+      photos.forEach((ph, i) => { sc.push({ type: "text", text: `사진 ${i + 1}` }, { type: "image", source: inline[i] }) })
+      const sm: any = await clientA.messages.create({
+        model: process.env.AI_MODEL || "claude-sonnet-5-5",
+        max_tokens: 3000,
+        system: `상품 사진 분류기입니다. 각 사진을 보고 JSON 배열만 출력합니다.
+[{"n": 번호, "text": 사진 위에 편집으로 넣은 글자·배너·아이콘·별점·말풍선이 있으면 true(상자나 기계에 원래 찍힌 글자는 false), "same": 앞 번호 사진과 같은 장면·같은 사진(크기·자르기만 다름)이면 그 번호 아니면 null, "desc": "사진에 실제로 보이는 것 한 줄"}]`,
+        messages: [{ role: "user", content: sc }],
+      })
+      const arr: any[] = await parseLoose(sm.content.map((b: any) => (b.type === "text" ? b.text : "")).join(""), clientA)
+      const keepP: any[] = [], keepI: any[] = []
+      photos.forEach((ph, i) => {
+        const j = arr.find((x) => Number(x.n) === i + 1) || {}
+        const mine = ph.kind.startsWith("판매자가 추가")
+        if (!mine && j.text) { sortNotes.push(`기존 사진 ${i + 1}: 글자·배너가 들어간 홍보 이미지라 제외`); return }
+        if (!mine && j.same) { sortNotes.push(`기존 사진 ${i + 1}: ${j.same}번과 같은 사진이라 제외`); return }
+        keepP.push({ ...ph, desc: String(j.desc || "") }); keepI.push(inline[i])
+      })
+      if (keepP.length) { photos.splice(0, photos.length, ...keepP); inline.splice(0, inline.length, ...keepI) }
+    } catch {}
     const content: any[] = [{ type: "text", text: `상품 정보:\n${JSON.stringify(info, null, 1)}\n\n서로 다른 실제 사진은 ${photos.length}장뿐입니다. 사진 번호는 1~${photos.length}만 쓰고, 같은 사진을 두 번 쓰지 마세요.` }]
     photos.forEach((ph, i) => {
-      content.push({ type: "text", text: `사진 ${i + 1} — ${ph.kind}${ph.caption ? ` / 설명: ${ph.caption}` : ""}` })
+      content.push({ type: "text", text: `사진 ${i + 1} — ${ph.kind}${ph.caption ? ` / 설명: ${ph.caption}` : ""}${(ph as any).desc ? ` / 보이는 것: ${(ph as any).desc}` : ""}` })
       if (inline[i]) content.push({ type: "image", source: inline[i] })
     })
     content.push({ type: "text", text: "출력 형식의 JSON 하나만 쓰세요." })
@@ -578,6 +602,7 @@ async function aiDesign(job: any) {
       if (Object.keys(d.scenesOut).length) warnings.push("AI 연출 사진에는 '연출 이미지' 표기가 들어갑니다. 네이버 신선식품에는 쓰지 마세요.")
     }
     delete d.scenes
+    if (sortNotes.length) d.analysis = sortNotes.join("\n") + "\n" + (d.analysis || "")
     await store().setJSON(key, { running: false, at: now(), design: d, warnings: [...new Set(warnings)], proofFixes })
   } catch (e: any) {
     await store().setJSON(key, { running: false, at: now(), error: String(e?.message || e) })
