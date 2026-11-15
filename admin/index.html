@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>관리자 | 모아커머스</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
+<style>
+:root{--ink:#14130f;--ink2:#3d3b35;--mute:#76736b;--line:#e4e1da;--paper:#fbfaf7;--accent:#e8501f;--ok:#1f7a44;--warn:#b45309;--bad:#c41e3a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55;word-break:keep-all}
+button,input,select,textarea{font:inherit;color:inherit}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:5}
+header b{font-size:17px;letter-spacing:-.02em}
+nav{display:flex;gap:4px}
+nav button{border:0;background:none;padding:8px 14px;border-radius:8px;font-weight:600;cursor:pointer;color:var(--mute)}
+nav button.on{background:var(--ink);color:#fff}
+main{max-width:1100px;margin:0 auto;padding:24px 20px 80px}
+h2{font-size:20px;letter-spacing:-.02em;margin:0 0 14px}
+h3{font-size:16px;margin:22px 0 10px}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+label{display:block;font-size:13px;font-weight:600;color:var(--ink2);margin-bottom:4px}
+input,select,textarea{width:100%;border:1px solid var(--line);border-radius:7px;padding:9px 10px;background:#fff}
+textarea{min-height:90px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.btn{border:1px solid var(--ink);background:#fff;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer}
+.btn.dark{background:var(--ink);color:#fff}
+.btn.accent{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.small{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:default}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.spacer{flex:1}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:#f6f5f1;font-weight:700;font-size:13px;color:var(--ink2)}
+td.num,th.num{text-align:right;white-space:nowrap}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;background:#eee}
+.tag.접수{background:#fde7dc;color:#9a3412}.tag.발주완료{background:#dbeafe;color:#1e40af}.tag.발송{background:#dcfce7;color:#166534}.tag.취소{background:#f3f4f6;color:#6b7280}
+.note{font-size:13px;color:var(--mute)}
+.warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0}
+.okbox{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0}
+.thumbs{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.thumb{position:relative;width:110px;height:110px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:#f3f3f3}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.thumb button{position:absolute;top:4px;right:4px;border:0;background:rgba(0,0,0,.6);color:#fff;border-radius:6px;width:24px;height:24px;cursor:pointer}
+.vlist{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.vlist button{border:1px solid var(--line);background:#fff;padding:8px 14px;border-radius:999px;cursor:pointer;font-weight:600}
+.vlist button.on{border-color:var(--ink);background:var(--ink);color:#fff}
+pre{white-space:pre-wrap;background:#f6f5f1;border-radius:8px;padding:12px;font-family:inherit;font-size:14px}
+#login{max-width:360px;margin:12vh auto;text-align:center}
+#login h1{font-size:24px;margin-bottom:6px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
+#toast.show{opacity:1}
+.hidden{display:none!important}
+@media(max-width:640px){th.hide-m,td.hide-m{display:none}}
+</style>
+</head>
+<body>
+
+<section id="login" class="hidden">
+  <h1>모아커머스 관리자</h1>
+  <p class="note" style="margin-bottom:20px">대표 전용 페이지입니다.</p>
+  <form id="loginForm">
+    <input type="password" id="pw" placeholder="관리자 비밀번호" autocomplete="current-password" required>
+    <button class="btn dark" style="width:100%;margin-top:10px">로그인</button>
+    <p id="loginErr" class="note" style="color:var(--bad);margin-top:10px"></p>
+  </form>
+</section>
+
+<div id="app" class="hidden">
+  <header>
+    <b>모아커머스 관리자</b>
+    <nav>
+      <button data-tab="orders" class="on">주문·발주</button>
+      <button data-tab="vendors">업체·상품</button>
+      <button data-tab="settings">설정</button>
+    </nav>
+    <button class="btn small" id="logoutBtn">로그아웃</button>
+  </header>
+
+  <main>
+    <!-- 주문·발주 -->
+    <section id="tab-orders">
+      <div class="card">
+        <h2>수동 주문 입력 (카톡·밴드 등)</h2>
+        <label>고객 메시지 붙여넣기 (선택)</label>
+        <textarea id="rawText" placeholder="예) 김지민 / 경기도 수원시 ○○로 12, 101동 202호 / 010-1234-5678 / 유라귤 3kg 2박스"></textarea>
+        <div class="row" style="margin:8px 0 14px"><button class="btn small" id="parseBtn">자동 채우기</button><span class="note">전화번호·주소·수량만 추정합니다. 저장 전에 꼭 확인하세요.</span></div>
+        <div class="grid">
+          <div><label>주문 채널</label><select id="o_channel"><option>카톡</option><option>밴드</option><option>쿠팡</option><option>네이버</option><option>기타</option></select></div>
+          <div><label>공급 업체</label><select id="o_vendor"></select></div>
+          <div><label>상품</label><select id="o_product"></select></div>
+          <div><label>수량(박스)</label><input id="o_qty" type="number" min="1" value="1"></div>
+          <div><label>받는분 성명 *</label><input id="o_name"></div>
+          <div><label>받는분 전화번호 *</label><input id="o_phone" placeholder="010-0000-0000"></div>
+          <div><label>기타 연락처</label><input id="o_phone2"></div>
+          <div><label>판매가(1박스, 선택)</label><input id="o_price" type="number" min="0"></div>
+        </div>
+        <div style="margin-top:12px"><label>받는분 주소(전체) *</label><input id="o_addr"></div>
+        <div style="margin-top:12px"><label>배송 요청사항</label><input id="o_msg"></div>
+        <div class="row" style="margin-top:14px"><button class="btn dark" id="saveOrderBtn">주문 저장</button></div>
+      </div>
+
+      <div class="card">
+        <div class="row"><h2 style="margin:0">주문 목록</h2><span class="spacer"></span>
+          <select id="f_vendor" style="width:auto"></select>
+          <select id="f_status" style="width:auto"><option value="">전체 상태</option><option>접수</option><option>발주완료</option><option>발송</option><option>취소</option></select>
+        </div>
+        <div id="poBox" style="margin-top:12px"></div>
+        <div style="overflow-x:auto;margin-top:10px"><table>
+          <thead><tr><th><input type="checkbox" id="chkAll" style="width:auto"></th><th>접수</th><th>채널</th><th>상품</th><th class="num">수량</th><th>받는분</th><th class="hide-m">주소</th><th>상태</th><th></th></tr></thead>
+          <tbody id="orderRows"></tbody>
+        </table></div>
+        <p class="note" id="orderEmpty" style="margin-top:10px"></p>
+      </div>
+    </section>
+
+    <!-- 업체·상품 -->
+    <section id="tab-vendors" class="hidden">
+      <div class="vlist" id="vendorList"></div>
+      <div class="card" id="vendorForm"></div>
+    </section>
+
+    <!-- 설정 -->
+    <section id="tab-settings" class="hidden">
+      <div class="card">
+        <h2>판매가 계산 기준</h2>
+        <p class="note" style="margin-bottom:14px">%로 입력하세요. 쿠팡 수수료와 네이버 결제수수료는 가정값이니 판매자센터에서 확인 후 고쳐 주세요.</p>
+        <div class="grid" id="settingsGrid"></div>
+        <div class="row" style="margin-top:14px"><button class="btn dark" id="saveSettingsBtn">저장</button></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s)
+const $$ = (s, el = document) => [...el.querySelectorAll(s)]
+const won = n => (Number(n) || 0).toLocaleString("ko-KR")
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]))
+let VENDORS = [], ORDERS = [], SETTINGS = {}, currentVendorId = null
+
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600) }
+
+async function api(path, opts = {}) {
+  const res = await fetch("/api/admin/" + path, { credentials: "same-origin", ...opts, headers: opts.body instanceof FormData ? {} : { "content-type": "application/json", ...(opts.headers || {}) } })
+  if (res.status === 401) { showLogin(); throw new Error("로그인이 필요합니다.") }
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "요청 실패")
+  return data
+}
+
+// ---------- 로그인 ----------
+function showLogin() { $("#login").classList.remove("hidden"); $("#app").classList.add("hidden") }
+async function start() {
+  try { await api("me"); $("#login").classList.add("hidden"); $("#app").classList.remove("hidden"); await loadAll() } catch { showLogin() }
+}
+$("#loginForm").addEventListener("submit", async e => {
+  e.preventDefault(); $("#loginErr").textContent = ""
+  const res = await fetch("/api/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: $("#pw").value }) })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) { $("#loginErr").textContent = data.error || "로그인 실패"; return }
+  $("#pw").value = ""; start()
+})
+$("#logoutBtn").onclick = async () => { await fetch("/api/logout", { method: "POST" }); showLogin() }
+
+// ---------- 탭 ----------
+$$("nav button").forEach(b => b.onclick = () => {
+  $$("nav button").forEach(x => x.classList.toggle("on", x === b))
+  $$("main > section").forEach(s => s.classList.toggle("hidden", s.id !== "tab-" + b.dataset.tab))
+})
+
+async function loadAll() {
+  ;[VENDORS, ORDERS, SETTINGS] = await Promise.all([api("vendors"), api("orders"), api("settings")])
+  if (!currentVendorId && VENDORS[0]) currentVendorId = VENDORS[0].id
+  renderVendorSelects(); renderOrders(); renderVendors(); renderSettings()
+}
+
+// ---------- 주문 ----------
+function renderVendorSelects() {
+  const opts = VENDORS.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join("")
+  $("#o_vendor").innerHTML = opts
+  $("#f_vendor").innerHTML = `<option value="">전체 업체</option>` + opts
+  renderProductSelect()
+}
+function renderProductSelect() {
+  const v = VENDORS.find(x => x.id === $("#o_vendor").value)
+  $("#o_product").innerHTML = (v?.products || []).map(p => `<option>${esc(p.name)}</option>`).join("")
+}
+$("#o_vendor").onchange = renderProductSelect
+
+$("#parseBtn").onclick = () => {
+  const t = $("#rawText").value
+  const phones = t.match(/01[016789][-\s.]?\d{3,4}[-\s.]?\d{4}/g) || []
+  if (phones[0]) $("#o_phone").value = phones[0].replace(/[\s.]/g, "-").replace(/^(\d{3})(\d{3,4})(\d{4})$/, "$1-$2-$3")
+  if (phones[1]) $("#o_phone2").value = phones[1]
+  const addrLine = t.split(/[\n\/]/).map(s => s.trim()).find(s => /(시|도|군|구)\s/.test(s) && /(로|길|동|읍|면|리)\s?\d*/.test(s))
+  if (addrLine) $("#o_addr").value = addrLine
+  const qty = t.match(/(\d+)\s*(박스|상자|개|box)/i)
+  if (qty) $("#o_qty").value = qty[1]
+  const kg = t.match(/(\d+)\s*kg/i)
+  if (kg) { const opt = $$("#o_product option").find(o => o.textContent.includes(kg[1] + "kg")); if (opt) $("#o_product").value = opt.textContent }
+  toast("자동으로 채웠습니다. 이름과 주소를 꼭 확인하세요.")
+}
+
+$("#saveOrderBtn").onclick = async () => {
+  const body = {
+    channel: $("#o_channel").value, vendorId: $("#o_vendor").value, productName: $("#o_product").value,
+    qty: $("#o_qty").value, salePrice: $("#o_price").value, recipientName: $("#o_name").value,
+    recipientPhone: $("#o_phone").value, recipientPhone2: $("#o_phone2").value,
+    recipientAddress: $("#o_addr").value, message: $("#o_msg").value, rawText: $("#rawText").value,
+  }
+  try {
+    const o = await api("orders", { method: "POST", body: JSON.stringify(body) })
+    ORDERS.unshift(o); renderOrders(); toast("주문을 저장했습니다.")
+    ;["#rawText", "#o_name", "#o_phone", "#o_phone2", "#o_addr", "#o_msg", "#o_price"].forEach(s => $(s).value = ""); $("#o_qty").value = 1
+  } catch (e) { toast(e.message) }
+}
+
+$("#f_vendor").onchange = renderOrders
+$("#f_status").onchange = renderOrders
+$("#chkAll").onchange = e => { $$(".ochk").forEach(c => c.checked = e.target.checked); renderPoBox() }
+
+function filteredOrders() {
+  const fv = $("#f_vendor").value, fs = $("#f_status").value
+  return ORDERS.filter(o => (!fv || o.vendorId === fv) && (!fs || o.status === fs))
+}
+function renderOrders() {
+  const list = filteredOrders()
+  const vname = id => VENDORS.find(v => v.id === id)?.name || "-"
+  $("#orderRows").innerHTML = list.map(o => `<tr>
+    <td><input type="checkbox" class="ochk" value="${esc(o.id)}" style="width:auto"></td>
+    <td>${esc(new Date(o.createdAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }))}</td>
+    <td>${esc(o.channel)}</td>
+    <td>${esc(vname(o.vendorId))}<br><span class="note">${esc(o.productName)}</span></td>
+    <td class="num">${o.qty}</td>
+    <td>${esc(o.recipientName)}<br><span class="note">${esc(o.recipientPhone)}</span></td>
+    <td class="hide-m">${esc(o.recipientAddress)}${o.message ? `<br><span class="note">요청: ${esc(o.message)}</span>` : ""}</td>
+    <td><select data-id="${esc(o.id)}" class="ostatus" style="width:auto;padding:4px 6px">${["접수", "발주완료", "발송", "취소"].map(s => `<option ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}</select></td>
+    <td><button class="btn small" data-del="${esc(o.id)}">삭제</button></td></tr>`).join("")
+  $("#orderEmpty").textContent = list.length ? "" : "주문이 없습니다."
+  $$(".ochk").forEach(c => c.onchange = renderPoBox)
+  $$(".ostatus").forEach(s => s.onchange = async () => {
+    try { const o = await api("orders/" + s.dataset.id, { method: "PUT", body: JSON.stringify({ status: s.value }) }); Object.assign(ORDERS.find(x => x.id === o.id), o); toast("상태를 바꿨습니다.") } catch (e) { toast(e.message) }
+  })
+  $$("[data-del]").forEach(b => b.onclick = async () => {
+    if (!confirm("이 주문을 삭제할까요? 되돌릴 수 없습니다.")) return
+    try { await api("orders/" + b.dataset.del, { method: "DELETE" }); ORDERS = ORDERS.filter(o => o.id !== b.dataset.del); renderOrders() } catch (e) { toast(e.message) }
+  })
+  renderPoBox()
+}
+
+function selectedOrders() { const ids = $$(".ochk").filter(c => c.checked).map(c => c.value); return ORDERS.filter(o => ids.includes(o.id)) }
+
+function renderPoBox() {
+  const sel = selectedOrders()
+  const box = $("#poBox")
+  if (!sel.length) { box.innerHTML = `<p class="note">발주서를 만들 주문을 체크하세요. 업체별로 하나씩 만들어집니다.</p>`; return }
+  const vendorIds = [...new Set(sel.map(o => o.vendorId))]
+  box.innerHTML = vendorIds.map(vid => {
+    const v = VENDORS.find(x => x.id === vid); const os = sel.filter(o => o.vendorId === vid)
+    const supply = os.reduce((sum, o) => sum + (v?.products.find(p => p.name === o.productName)?.supplyPrice || 0) * o.qty, 0)
+    const missing = !v?.sender?.name || !v?.sender?.address || !v?.sender?.phone
+    return `<div class="card" style="margin:0 0 10px">
+      <div class="row"><b>${esc(v?.name || "?")}</b><span class="note">${os.length}건 · ${os.reduce((s, o) => s + o.qty, 0)}박스</span><span class="spacer"></span>
+      <button class="btn small accent" data-po="${esc(vid)}" ${missing ? "disabled" : ""}>발주서 엑셀 만들기</button></div>
+      ${v?.order?.prepay ? `<div class="warn">선입금 업체입니다. 입금할 공급가 합계: <b>${won(supply)}원</b> · 마감 ${esc(v.order.cutoff || "확인 필요")}<br>입금은 대표님이 직접 해 주세요.</div>` : ""}
+      ${missing ? `<div class="warn">보내는분(출고지) 정보가 비어 있어 발주서를 만들 수 없습니다. '업체·상품' 탭에서 WING 등록 출고지를 입력하세요.</div>` : ""}
+    </div>`
+  }).join("")
+  $$("[data-po]").forEach(b => b.onclick = () => makePO(b.dataset.po))
+}
+
+async function makePO(vid) {
+  if (!window.XLSX) { toast("엑셀 모듈을 불러오는 중입니다. 잠시 후 다시 눌러 주세요."); return }
+  const v = VENDORS.find(x => x.id === vid); const os = selectedOrders().filter(o => o.vendorId === vid)
+  const cols = v.order?.columns || []
+  const val = (o, f) => ({
+    recipientName: o.recipientName, recipientAddress: o.recipientAddress, recipientPhone: o.recipientPhone, recipientPhone2: o.recipientPhone2,
+    senderName: v.sender.name, senderAddress: v.sender.address, senderPhone: v.sender.phone,
+    itemName: o.productName, qty: o.qty,
+    message: [v.order?.fixedMessage, o.message].filter(Boolean).join(" / "),
+  }[f] ?? "")
+  const rows = [cols.map(c => c.header), ...os.map(o => cols.map(c => val(o, c.field)))]
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws["!cols"] = cols.map(c => ({ wch: /주소/.test(c.header) ? 40 : 16 }))
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Sheet1")
+  const d = new Date(); const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`
+  XLSX.writeFile(wb, `${v.name}_발주서_${stamp}.xlsx`)
+  if (confirm(`${os.length}건을 '발주완료'로 바꿀까요? (업체에 파일을 보낸 뒤 누르세요)`)) {
+    for (const o of os) { const u = await api("orders/" + o.id, { method: "PUT", body: JSON.stringify({ status: "발주완료" }) }); Object.assign(o, u) }
+    renderOrders()
+  }
+}
+
+// ---------- 업체·상품 ----------
+function renderVendors() {
+  $("#vendorList").innerHTML = VENDORS.map(v => `<button data-v="${esc(v.id)}" class="${v.id === currentVendorId ? "on" : ""}">${esc(v.name)}</button>`).join("") + `<button data-v="__new">+ 새 업체</button>`
+  $$("#vendorList button").forEach(b => b.onclick = () => { currentVendorId = b.dataset.v; renderVendors() })
+  const v = currentVendorId === "__new" ? { name: "", status: "협의 중", products: [{ name: "", supplyPrice: 0 }], order: { method: "이메일", email: "", cutoff: "", prepay: false, csChannel: "", fixedMessage: "" }, sender: { name: "", address: "", phone: "" }, extraInfo: "", photoIds: [] } : VENDORS.find(x => x.id === currentVendorId)
+  if (!v) { $("#vendorForm").innerHTML = "<p class='note'>업체를 선택하세요.</p>"; return }
+  const isNew = currentVendorId === "__new"
+  $("#vendorForm").innerHTML = `
+    <div class="row"><h2 style="margin:0">${isNew ? "새 업체 등록" : esc(v.name)}</h2><span class="spacer"></span>
+      ${isNew ? "" : `<button class="btn small" id="delVendor">업체 삭제</button>`}</div>
+    <div class="grid" style="margin-top:14px">
+      <div><label>업체명</label><input id="v_name" value="${esc(v.name)}"></div>
+      <div><label>거래 상태</label><select id="v_status">${["협의 중", "거래 중", "중지"].map(s => `<option ${s === v.status ? "selected" : ""}>${s}</option>`).join("")}</select></div>
+    </div>
+
+    <h3>상품·공급가</h3>
+    <table><thead><tr><th>상품명(규격 포함)</th><th class="num">공급가(원)</th><th></th></tr></thead><tbody id="prodRows">
+      ${(v.products || []).map(p => `<tr><td><input class="p_name" value="${esc(p.name)}"></td><td><input class="p_price" type="number" min="0" value="${p.supplyPrice || 0}" style="text-align:right"></td><td><button class="btn small p_del">삭제</button></td></tr>`).join("")}
+    </tbody></table>
+    <button class="btn small" id="addProd" style="margin-top:8px">+ 상품 추가</button>
+
+    <h3>발주 방식</h3>
+    <div class="grid">
+      <div><label>전달 방식</label><input id="v_method" value="${esc(v.order?.method)}"></div>
+      <div><label>발주 이메일</label><input id="v_email" value="${esc(v.order?.email)}"></div>
+      <div><label>발주 마감</label><input id="v_cutoff" value="${esc(v.order?.cutoff)}" placeholder="평일 09:00"></div>
+      <div><label>C/S 문의 방법</label><input id="v_cs" value="${esc(v.order?.csChannel)}"></div>
+      <div><label>배송메시지 고정 문구</label><input id="v_fixed" value="${esc(v.order?.fixedMessage)}"></div>
+      <div><label>선입금 후발송</label><select id="v_prepay"><option value="1" ${v.order?.prepay ? "selected" : ""}>예</option><option value="0" ${v.order?.prepay ? "" : "selected"}>아니오</option></select></div>
+    </div>
+    ${v.order?.columns ? `<p class="note" style="margin-top:8px">발주서 열: ${v.order.columns.map(c => esc(c.header)).join(" · ")}</p>` : ""}
+
+    <h3>보내는분 (출고지 — 쿠팡 WING 등록 정보 그대로)</h3>
+    <div class="grid">
+      <div><label>성명</label><input id="v_sname" value="${esc(v.sender?.name)}"></div>
+      <div><label>전화번호</label><input id="v_sphone" value="${esc(v.sender?.phone)}"></div>
+    </div>
+    <div style="margin-top:12px"><label>주소</label><input id="v_saddr" value="${esc(v.sender?.address)}"></div>
+
+    <h3>추가 정보 (상세페이지에 활용)</h3>
+    <textarea id="v_extra" placeholder="한 줄에 하나씩. 예) 방송 측정 당시 당도 17.7 Brix (개체별 차이 있음)">${esc(v.extraInfo)}</textarea>
+    <p class="note">수치(당도 등)는 근거 자료(방송 캡처 등)를 보관해 두세요.</p>
+
+    <h3>실제 상품 사진</h3>
+    ${isNew ? `<p class="note">업체를 먼저 저장하면 사진을 올릴 수 있습니다.</p>` : `
+      <input type="file" id="v_photo" accept="image/*" multiple>
+      <div class="thumbs">${(v.photoIds || []).map(p => `<div class="thumb"><img src="/api/admin/vendors/${esc(v.id)}/photos/${esc(p)}" loading="lazy" alt=""><button data-ph="${esc(p)}" title="삭제">×</button></div>`).join("")}</div>
+      <p class="note" style="margin-top:6px">사진은 올릴 때 자동으로 줄여서 저장합니다. 네이버 신선식품은 AI 생성 이미지를 쓸 수 없으니 실제 사진만 올려 주세요.</p>`}
+
+    <div class="row" style="margin-top:20px">
+      <button class="btn dark" id="saveVendor">저장</button>
+      ${isNew ? "" : `<button class="btn accent" id="runVendor">실행 (판매가·등록 초안 만들기)</button>`}
+    </div>
+    <div id="listingOut">${v.listing ? renderListing(v.listing) : ""}</div>`
+
+  $("#addProd").onclick = () => { $("#prodRows").insertAdjacentHTML("beforeend", `<tr><td><input class="p_name"></td><td><input class="p_price" type="number" min="0" value="0" style="text-align:right"></td><td><button class="btn small p_del">삭제</button></td></tr>`); bindProdDel() }
+  bindProdDel()
+  $("#saveVendor").onclick = () => saveVendor(isNew)
+  if (!isNew) {
+    $("#delVendor").onclick = async () => {
+      if (!confirm(`'${v.name}' 업체와 사진을 삭제할까요? 되돌릴 수 없습니다.`)) return
+      await api("vendors/" + v.id, { method: "DELETE" }); VENDORS = VENDORS.filter(x => x.id !== v.id); currentVendorId = VENDORS[0]?.id || null; renderVendorSelects(); renderVendors()
+    }
+    $("#runVendor").onclick = async () => {
+      try { await saveVendor(false, true); const u = await api(`vendors/${v.id}/run`, { method: "POST" }); Object.assign(v, u); $("#listingOut").innerHTML = renderListing(u.listing); toast("판매가와 등록 초안을 만들었습니다.") } catch (e) { toast(e.message) }
+    }
+    $("#v_photo").onchange = async e => {
+      for (const f of e.target.files) {
+        try { const blob = await shrink(f); const fd = new FormData(); fd.append("file", blob, f.name.replace(/\.\w+$/, "") + ".jpg"); const r = await api(`vendors/${v.id}/photos`, { method: "POST", body: fd }); v.photoIds = [...(v.photoIds || []), r.id] } catch (err) { toast(err.message) }
+      }
+      renderVendors(); toast("사진을 올렸습니다.")
+    }
+    $$("[data-ph]").forEach(b => b.onclick = async () => {
+      if (!confirm("이 사진을 삭제할까요?")) return
+      await api(`vendors/${v.id}/photos/${b.dataset.ph}`, { method: "DELETE" }); v.photoIds = v.photoIds.filter(p => p !== b.dataset.ph); renderVendors()
+    })
+  }
+}
+function bindProdDel() { $$(".p_del").forEach(b => b.onclick = () => b.closest("tr").remove()) }
+
+function renderListing(l) {
+  return `<h3>등록 초안 <span class="tag">${esc(l.status)}</span></h3>
+    <table><thead><tr><th>상품</th><th class="num">공급가</th><th class="num">쿠팡 판매가</th><th class="num">쿠팡 순이익</th><th class="num">네이버 판매가</th><th class="num">네이버 순이익</th></tr></thead>
+    <tbody>${l.items.map(i => `<tr><td>${esc(i.name)}</td><td class="num">${won(i.supplyPrice)}</td><td class="num"><b>${won(i.coupang)}</b></td><td class="num">${won(i.coupangProfit)}</td><td class="num"><b>${won(i.naver)}</b></td><td class="num">${won(i.naverProfit)}</td></tr>`).join("")}</tbody></table>
+    <h3>상세 문구 초안</h3><pre>${esc(l.detailDraft)}</pre>
+    <div class="warn">${l.checks.map(esc).join("<br>")}</div>
+    <p class="note">쿠팡·네이버 API 키를 연결하면 이 초안을 승인 후 자동 등록하도록 다음 단계에서 붙입니다.</p>`
+}
+
+async function saveVendor(isNew, quiet) {
+  const prev = isNew ? {} : VENDORS.find(x => x.id === currentVendorId)
+  const products = $$("#prodRows tr").map(tr => ({ name: $(".p_name", tr).value.trim(), supplyPrice: Number($(".p_price", tr).value || 0) })).filter(p => p.name)
+  const body = {
+    name: $("#v_name").value.trim(), status: $("#v_status").value, products,
+    order: { ...(prev.order || {}), method: $("#v_method").value, email: $("#v_email").value.trim(), cutoff: $("#v_cutoff").value, csChannel: $("#v_cs").value, fixedMessage: $("#v_fixed").value, prepay: $("#v_prepay").value === "1" },
+    sender: { ...(prev.sender || {}), name: $("#v_sname").value.trim(), phone: $("#v_sphone").value.trim(), address: $("#v_saddr").value.trim() },
+    extraInfo: $("#v_extra").value,
+  }
+  if (!body.name) { toast("업체명을 입력하세요."); throw new Error("업체명 없음") }
+  const v = isNew ? await api("vendors", { method: "POST", body: JSON.stringify(body) }) : await api("vendors/" + currentVendorId, { method: "PUT", body: JSON.stringify(body) })
+  if (isNew) { VENDORS.push(v); currentVendorId = v.id } else Object.assign(VENDORS.find(x => x.id === v.id), v)
+  renderVendorSelects(); if (!quiet) { renderVendors(); toast("저장했습니다.") }
+}
+
+function shrink(file, max = 1600) {
+  return new Promise((resolve, reject) => {
+    const img = new Image(); const url = URL.createObjectURL(file)
+    img.onload = () => {
+      const scale = Math.min(1, max / Math.max(img.width, img.height))
+      const c = document.createElement("canvas"); c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale)
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url)
+      c.toBlob(b => b ? resolve(b) : reject(new Error("사진 변환 실패")), "image/jpeg", 0.88)
+    }
+    img.onerror = () => reject(new Error("사진을 읽을 수 없습니다."))
+    img.src = url
+  })
+}
+
+// ---------- 설정 ----------
+const SETTING_FIELDS = [
+  ["marginRate", "목표 마진율 (판매가 대비 %)", true], ["coupangFee", "쿠팡 판매수수료 % (VAT 별도)", true],
+  ["naverSalesFee", "네이버 판매수수료 % (VAT 별도)", true], ["naverPayFee", "네이버 결제수수료 % (VAT 별도)", true],
+  ["vatOnFee", "수수료 부가세 %", true], ["extraShipping", "공급가 외 추가 배송비 (원)", false], ["roundUnit", "가격 올림 단위 (원)", false],
+]
+function renderSettings() {
+  $("#settingsGrid").innerHTML = SETTING_FIELDS.map(([k, label, pct]) => `<div><label>${label}</label><input type="number" step="any" data-k="${k}" data-pct="${pct ? 1 : 0}" value="${pct ? +(SETTINGS[k] * 100).toFixed(4) : SETTINGS[k]}"></div>`).join("")
+}
+$("#saveSettingsBtn").onclick = async () => {
+  const body = {}; $$("#settingsGrid input").forEach(i => body[i.dataset.k] = i.dataset.pct === "1" ? Number(i.value) / 100 : Number(i.value))
+  try { SETTINGS = await api("settings", { method: "PUT", body: JSON.stringify(body) }); renderSettings(); toast("저장했습니다.") } catch (e) { toast(e.message) }
+}
+
+start()
+</script>
+</body>
+</html>
