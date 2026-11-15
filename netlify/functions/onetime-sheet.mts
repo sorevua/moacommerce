@@ -12,7 +12,7 @@ export default async (req: Request) => {
   const imgs = [op.images?.representativeImage?.url, ...(op.images?.optionalImages || []).map((x: any) => x.url)].filter(Boolean)
   if (u.searchParams.get("json")) return Response.json({ imgs, det })
   const w = Number(u.searchParams.get("w") || 170)
-  const cell = (src: string, label: string) => `<div style="display:inline-block;width:${w}px;margin:3px;vertical-align:top;font:bold 14px sans-serif"><div style="background:#000;color:#ff0;padding:2px 4px">${label}</div><img src="${src}?type=w500" style="width:${w}px;display:block"></div>`
+  const cell = (src: string, label: string) => `<div style="display:inline-block;width:${w}px;margin:3px;vertical-align:top;font:bold 14px sans-serif"><div style="background:#000;color:#ff0;padding:2px 4px">${label}</div><img referrerpolicy="no-referrer" src="${src}" style="width:${w}px;display:block"></div>`
   const part = u.searchParams.get("part") || "det"
   const html = `<html><body style="margin:0;background:#ddd">${part === "img" ? imgs.map((s, i) => cell(s, i === 0 ? "대표" : "추가" + i)).join("") : det.map((s, i) => cell(s, "상세" + (i + 1))).join("")}</body></html>`
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } })
