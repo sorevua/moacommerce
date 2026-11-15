@@ -423,8 +423,13 @@ const DESIGN_SYSTEM = `당신은 한국 오픈마켓 신선식품 상세페이�
  "guide": [{"label": "예: 고르는 법 / 받으면 바로 / 보관 / 손질 / 드시는 법", "text": "내용"}],
  "shipping": [{"label": "항목", "text": "내용"}],
  "notice": ["꼭 읽어 주세요 항목"],
- "brand": null 또는 {"name": "브랜드명", "text": "판매자소개 문장"}
+ "brand": null 또는 {"name": "브랜드명", "text": "판매자소개 문장"},
+ "scenes": [{"slot": "hero|intro|option|guide|brand", "base": 기준사진번호, "what": "만들 연출 사진 설명(영어 권장, 소품·배경·구도·빛 중심)"}]
 }
+[scenes — 상세페이지 분위기 사진]
+- 같은 사진이 반복되면 성의 없어 보인다. 섹션마다 다른 장면의 연출 사진을 계획한다(최대 4장).
+- hero: 대표 장면(예: 나무 테이블 위 바구니에 담긴 과일, 잎 달린 과일, 자연광). intro: 산지·수확 분위기. option: 상자에 담긴 모습. guide: 껍질 벗긴 과육·먹는 장면. brand: 차분한 정물.
+- base는 그 과일이 가장 잘 보이는 실제 사진 번호(글자 없는 사진). 과일 품종·색·크기는 실제와 같게 유지하고 연출만 바꾼다. 글자·로고 금지.
 points는 3개(근거 부족하면 2개), gallery는 쓸 수 있는 실제 사진 전부(hero·proof에 쓴 사진 제외, 최대 6장).`
 
 async function aiDesign(job: any) {
@@ -494,6 +499,23 @@ async function aiDesign(job: any) {
     const source = JSON.stringify(info) + extras.map((e) => e.caption).join(" ")
     for (const mm of JSON.stringify(d).matchAll(/(\d+(?:\.\d+)?)\s*(?:brix|브릭스)/gi)) if (!source.includes(mm[1])) warnings.push(`메모에 없는 당도 ${mm[1]}가 있습니다. 확인하세요.`)
     if (d.proof?.value && !source.includes(String(d.proof.value))) { warnings.push(`근거 없는 측정값 ${d.proof.value}를 뺐습니다.`); d.proof = null }
+    // 같은 사진 반복 금지
+    const seen = new Set<string>([d.hero?.photo, d.proof?.photo].filter(Boolean))
+    d.gallery = d.gallery.filter((g: any) => (seen.has(g.photo) ? false : (seen.add(g.photo), true)))
+    // 섹션별 연출 사진 생성 (자동 검수 통과분만)
+    d.scenesOut = {}
+    const wantScenes: any[] = (Array.isArray(d.scenes) ? d.scenes : []).filter((x: any) => x?.slot && x?.what).slice(0, 4)
+    if (job.genImages === false) {}
+    else if (!imageGenConfigured()) warnings.push("연출 사진을 만들려면 OpenAI 연결이 필요합니다. 지금은 실제 사진만 썼습니다.")
+    else if (wantScenes.length) {
+      const res = await makeShots(wantScenes.map((x) => ({ base: Number(x.base) || 1, what: String(x.what), why: String(x.slot) })), photos.map((p) => p.url), job.origin || "", 4)
+      res.forEach((r, i) => {
+        if (r.ok && r.url) d.scenesOut[wantScenes[i].slot] = r.url
+        else warnings.push(`연출 사진(${wantScenes[i].slot})은 품질 검수에서 떨어져 넣지 않았습니다${r.error ? ` (${r.error})` : ""}.`)
+      })
+      if (Object.keys(d.scenesOut).length) warnings.push("AI 연출 사진에는 '연출 이미지' 표기가 들어갑니다. 네이버 신선식품에는 쓰지 마세요.")
+    }
+    delete d.scenes
     await store().setJSON(key, { running: false, at: now(), design: d, warnings: [...new Set(warnings)] })
   } catch (e: any) {
     await store().setJSON(key, { running: false, at: now(), error: String(e?.message || e) })
@@ -504,6 +526,6 @@ export default async (req: Request) => {
   if (!isLoggedIn(req)) return
   const job = await req.json().catch(() => ({}))
   if (job.type === "refresh") await refreshProducts()
-  if (job.type === "design" && job.sellerProductId) await aiDesign(job)
+  if (job.type === "design" && job.sellerProductId) await aiDesign({ ...job, origin: new URL(req.url).origin })
   if (job.type === "ai" && job.sellerProductId) await aiDetail({ ...job, origin: new URL(req.url).origin })
 }

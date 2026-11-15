@@ -106,10 +106,10 @@ async function checkImage(client: Anthropic, ref: { b64: string; type: string },
 }
 
 // 필요한 컷만 만들고, 통과한 사진만 공개 주소로 저장해 돌려준다.
-export async function makeShots(shots: Shot[], photoUrls: string[], origin: string): Promise<ShotResult[]> {
+export async function makeShots(shots: Shot[], photoUrls: string[], origin: string, limit = 2): Promise<ShotResult[]> {
   const client = new Anthropic()
   const out: ShotResult[] = []
-  for (const s of shots.slice(0, 2)) {
+  for (const s of shots.slice(0, limit)) {
     const res: ShotResult = { what: s.what, why: s.why, base: s.base, ok: false, tries: [] }
     out.push(res)
     try {
