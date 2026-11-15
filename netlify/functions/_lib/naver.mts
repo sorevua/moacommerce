@@ -45,7 +45,10 @@ export async function ncall(method: "GET" | "POST" | "PUT" | "PATCH", path: stri
   const url = HOST + path + (query ? "?" + query : "")
   let r = await relay(method, url, "Bearer " + tok, body)
   if (r.status === 401) { tok = await naverToken(true); r = await relay(method, url, "Bearer " + tok, body) }
-  if (r.status >= 400) throw new Error(`네이버 오류 ${r.status}: ${r.data?.message || r.data?.raw || JSON.stringify(r.data).slice(0, 300)}`)
+  if (r.status >= 400) {
+    const inv = (r.data?.invalidInputs || []).map((x: any) => `${x.name}: ${x.message}`).join(" | ")
+    throw new Error(`네이버 오류 ${r.status}: ${r.data?.message || r.data?.raw || JSON.stringify(r.data).slice(0, 300)}${inv ? " → " + inv : ""}`)
+  }
   return r.data
 }
 
@@ -130,6 +133,10 @@ export async function naverDispatch(productOrderId: string, courier: string, tra
 
 // ---------- 상품 이미지 업로드 (외부 주소 → 네이버 이미지 서버) ----------
 export async function naverUploadImage(fileUrl: string, fileName = "image.jpg") {
+  const cache = getStore({ name: "admin-settings", consistency: "strong" })
+  const ck = "nvimg-" + Buffer.from(fileUrl).toString("base64url").slice(-120)
+  const hit = await cache.get(ck, { type: "text" })
+  if (hit) return hit
   const tok = await naverToken()
   const res = await fetch(env("MAKE_RELAY_URL"), {
     method: "POST",
@@ -143,5 +150,6 @@ export async function naverUploadImage(fileUrl: string, fileName = "image.jpg") 
   if (!upstream || upstream >= 400) throw new Error(`네이버 이미지 업로드 실패 ${upstream}: ${data?.message || data?.raw || text.slice(0, 200)}`)
   const url = data?.images?.[0]?.url
   if (!url) throw new Error("네이버 이미지 주소를 못 받았습니다: " + text.slice(0, 200))
+  await cache.set(ck, String(url))
   return String(url)
 }
