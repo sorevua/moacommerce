@@ -13,6 +13,13 @@ export default async (req: Request) => {
     else if (q === "addr") r = await ncall("GET", "/v1/seller/addressbooks-for-page", "page=1&size=50")
     else if (q === "cat") { const all: any[] = await ncall("GET", "/v1/categories", "last=true"); const k = u.searchParams.get("k") || "키위"; r = all.filter((c: any) => String(c.wholeCategoryName).includes(k)) }
     else if (q === "cp") { const p: any = await getProduct(u.searchParams.get("id") || "16417633126"); r = { name: p.sellerProductName, display: p.displayProductName, items: (p.items || []).map((i: any) => ({ n: i.itemName, price: i.salePrice, img: (i.images || []).map((x: any) => x.cdnPath || x.vendorPath) })), contents: JSON.stringify(p.items?.[0]?.contents || []).slice(0, 3000) } }
+    else if (q === "all") {
+      const o: any = await ncall("GET", "/v2/products/origin-products/13763431198"); delete o.originProduct.detailContent
+      const addr: any = await ncall("GET", "/v1/seller/addressbooks-for-page", "page=1&size=50")
+      const all: any[] = await ncall("GET", "/v1/categories", "last=true")
+      const cats = all.filter((c: any) => /키위|감귤|귤|한라봉|만감/.test(String(c.wholeCategoryName)) && /과일/.test(String(c.wholeCategoryName))).map((c: any) => [c.id, c.wholeCategoryName])
+      r = { origin: o, addr, cats }
+    }
     else r = { error: "q?" }
   } catch (e: any) { r = { error: String(e?.message || e) } }
   const s = JSON.stringify(r)
