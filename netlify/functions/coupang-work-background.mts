@@ -667,6 +667,8 @@ async function createNew(job: any) {
       if (!cat) throw new Error("쿠팡 카테고리 추천에 실패했습니다.")
     }
     const meta = await categoryMeta(cat)
+    const mand = (meta?.attributes || []).filter((a: any) => a.required === "MANDATORY")
+    log.push(`필수 구매옵션: ${mand.map((a: any) => `${a.attributeTypeName}(${a.dataType}${a.basicUnit && a.basicUnit !== "없음" ? "," + a.basicUnit : ""}${a.groupNumber && a.groupNumber !== "NONE" ? ",그룹" + a.groupNumber : ""})`).join(", ") || "없음"}`)
     await save({ running: true })
     // 2) 구매옵션·고시정보를 AI가 카테고리 규격에 맞춰 채운다
     const client = new Anthropic()
@@ -702,6 +704,7 @@ async function createNew(job: any) {
     if (mj.productGroup) body.productGroup = String(mj.productGroup)
     if (job.outboundShippingPlaceCode) body.outboundShippingPlaceCode = String(job.outboundShippingPlaceCode)
     if (job.returnCenterCode) body.returnCenterCode = String(job.returnCenterCode)
+    if (!body.brand) body.brand = String(job.brand || "모아커머스")
     if (job.returnInfo?.address) {
       // 반품지 계약이 없을 때: 업체 주소로 반품 정보를 직접 넣는다
       body.returnCenterCode = "NO_RETURN_CENTERCODE"
@@ -709,7 +712,7 @@ async function createNew(job: any) {
       body.companyContactNumber = String(job.returnInfo.phone || "")
       body.returnZipCode = String(job.returnInfo.zip || "")
       body.returnAddress = String(job.returnInfo.address || "")
-      body.returnAddressDetail = String(job.returnInfo.detail || "")
+      body.returnAddressDetail = String(job.returnInfo.detail || "-")
     }
     if (Number(job.returnCharge) > 0) body.returnCharge = Number(job.returnCharge)
     body.saleStartedAt = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 19)
@@ -727,6 +730,22 @@ async function createNew(job: any) {
       it.salePrice = it.originalPrice
       it.maximumBuyCount = Number(base.maximumBuyCount) || 999
       it.attributes = (am.attributes || []).filter((a: any) => a?.attributeTypeName && a?.attributeValueName).map((a: any) => ({ attributeTypeName: String(a.attributeTypeName), attributeValueName: String(a.attributeValueName) }))
+      // 필수 구매옵션이 빠졌으면 옵션 이름에서 채운다
+      const has = new Set(it.attributes.map((a: any) => a.attributeTypeName))
+      const groupsDone = new Set<string>()
+      for (const a of mand) {
+        if (a.groupNumber && a.groupNumber !== "NONE") {
+          if (groupsDone.has(a.groupNumber) || it.attributes.some((x: any) => mand.find((m: any) => m.attributeTypeName === x.attributeTypeName && m.groupNumber === a.groupNumber))) { groupsDone.add(a.groupNumber); continue }
+        }
+        if (has.has(a.attributeTypeName)) continue
+        const nm = String(o.name), t = String(a.attributeTypeName)
+        let v = ""
+        const kg = nm.match(/(\d+(?:\.\d+)?)\s*kg/i)
+        if (/중량|무게/.test(t) && kg) v = /g$/.test(a.basicUnit || "") && a.basicUnit === "g" ? `${Number(kg[1]) * 1000}g` : `${kg[1]}kg`
+        else if (/수량/.test(t)) v = "1개"
+        else if (/등급|크기|사이즈|과/.test(t)) v = (nm.match(/특대|대과|중과|소과|특|대|중|소/) || [""])[0]
+        if (v) { it.attributes.push({ attributeTypeName: t, attributeValueName: v }); if (a.groupNumber && a.groupNumber !== "NONE") groupsDone.add(a.groupNumber) }
+      }
       it.notices = (mj.notices || []).filter((n: any) => n?.noticeCategoryName && n?.noticeCategoryDetailName).map((n: any) => ({ noticeCategoryName: String(n.noticeCategoryName), noticeCategoryDetailName: String(n.noticeCategoryDetailName), content: String(n.content || "상세페이지 참조") }))
       const extra = (job.photos || []).filter((u: string) => /^https:\/\/[^\s"'<>]+$/.test(u)).slice(0, 9)
       it.images = [{ imageOrder: 0, imageType: "REPRESENTATION", vendorPath: mainUrl }, ...extra.map((u: string, i: number) => ({ imageOrder: i + 1, imageType: "DETAIL", vendorPath: u }))]
