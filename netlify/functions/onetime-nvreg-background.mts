@@ -79,7 +79,7 @@ export default async (req: Request) => {
         const ab: any = await ncall("GET", "/v1/seller/addressbooks-for-page", "page=1&size=100")
         const hit = (ab?.addressBooks || []).find((a: any) => a.name === j.addrNew!.name)
         if (hit) shipAddr = retAddr = Number(hit.addressBookNo)
-        else throw new Error(`네이버 판매자 주소록에 '${j.addrNew.name}' 주소가 없습니다`)
+        else { shipAddr = retAddr = 200671652; (j as any).suspend = true; L.push("광양 주소가 주소록에 없어 임시 주소로 판매중지 상태로 등록") }
       }
       // 옵션·가격
       const groups = groupByPrice(items)
@@ -90,7 +90,7 @@ export default async (req: Request) => {
       const prices = gi.map((i: any) => Number(i.salePrice))
       const base = pickBase(prices)
       const o = JSON.parse(JSON.stringify(tpl.originProduct))
-      o.statusType = "SALE"
+      o.statusType = (j as any).suspend ? "SUSPENSION" : "SALE"
       o.leafCategoryId = j.category
       const baseName = String(p.displayProductName || p.sellerProductName)
       const kgs = [...new Set(gi.map((i: any) => (String(i.itemName).match(/\d+(?:\.\d+)?\s*kg/i) || [""])[0].replace(/\s/g, "")).filter(Boolean))]
