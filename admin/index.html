@@ -324,7 +324,7 @@ async function makePO(vid) {
   const cols = v.order?.columns || []
   const val = (o, f) => ({
     recipientName: o.recipientName, recipientAddress: o.recipientAddress, recipientPhone: o.recipientPhone, recipientPhone2: o.recipientPhone2,
-    senderName: v.sender.name, senderAddress: v.sender.address, senderPhone: v.sender.phone,
+    senderName: v.sender.name, senderAddress: [v.sender.address, v.sender.addressDetail].filter(Boolean).join(" "), senderPhone: v.sender.phone,
     itemName: o.productName, qty: o.qty,
     message: [v.order?.fixedMessage, o.message].filter(Boolean).join(" / "),
   }[f] ?? "")
@@ -375,10 +375,13 @@ function renderVendors() {
     <h3>보내는분 (출고지)</h3>
     <div class="grid">
       <div><label>성명 (업체명 또는 담당자)</label><input id="v_sname" value="${esc(v.sender?.name)}"></div>
-      <div><label>전화번호</label><input id="v_sphone" value="${esc(v.sender?.phone)}"></div>
+      <div><label>메인 전화 (업체가 받는 번호)</label><input id="v_sphone" value="${esc(v.sender?.phone)}" placeholder="010-0000-0000"></div>
+      <div><label>보조 전화 (대표님)</label><input id="v_sphone2" value="${esc(v.sender?.phoneSub)}" placeholder="010-0000-0000"></div>
       <div><label>우편번호</label><input id="v_szip" value="${esc(v.sender?.zip)}"></div>
     </div>
     <div style="margin-top:12px"><label>주소</label><input id="v_saddr" value="${esc(v.sender?.address)}"></div>
+    <div style="margin-top:12px"><label>상세주소 (있으면)</label><input id="v_saddr2" value="${esc(v.sender?.addressDetail)}"></div>
+    <p class="note" style="margin-top:6px">발주서의 '보내는분 전화번호'에는 메인 전화가 들어갑니다. 쿠팡 WING 출고지와 같게 맞춰 주세요.</p>
 
     <h3>반품지</h3>
     <label style="display:flex;gap:8px;align-items:center;font-weight:600"><input type="checkbox" id="v_rsame" style="width:auto" ${v.returnInfo?.sameAsSender !== false ? "checked" : ""}> 출고지와 동일</label>
@@ -409,7 +412,7 @@ function renderVendors() {
 
   $("#addProd").onclick = () => { $("#prodRows").insertAdjacentHTML("beforeend", `<tr><td><input class="p_name"></td><td><input class="p_price" type="number" min="0" value="0" style="text-align:right"></td><td><button class="btn small p_del">삭제</button></td></tr>`); bindProdDel() }
   bindProdDel()
-  $("#v_rsame").onchange = e => $("#returnFields").classList.toggle("hidden", e.target.checked)
+  $("#v_rsame").onchange = e => $("#v_rbox").classList.toggle("hidden", e.target.checked)
   $("#saveVendor").onclick = () => saveVendor(isNew)
   if (!isNew) {
     $("#delVendor").onclick = async () => {
@@ -449,7 +452,7 @@ async function saveVendor(isNew, quiet) {
   const body = {
     name: $("#v_name").value.trim(), status: $("#v_status").value, products,
     order: { ...(prev.order || {}), method: $("#v_method").value, email: $("#v_email").value.trim(), cutoff: $("#v_cutoff").value, csChannel: $("#v_cs").value, fixedMessage: $("#v_fixed").value, prepay: $("#v_prepay").value === "1" },
-    sender: { ...(prev.sender || {}), name: $("#v_sname").value.trim(), phone: $("#v_sphone").value.trim(), zip: $("#v_szip").value.trim(), address: $("#v_saddr").value.trim() },
+    sender: { ...(prev.sender || {}), name: $("#v_sname").value.trim(), phone: $("#v_sphone").value.trim(), phoneSub: $("#v_sphone2").value.trim(), zip: $("#v_szip").value.trim(), address: $("#v_saddr").value.trim(), addressDetail: $("#v_saddr2").value.trim() },
     returnInfo: $("#v_rsame").checked ? { sameAsSender: true, name: "", phone: "", zip: "", address: "" } : { sameAsSender: false, name: $("#v_rname").value.trim(), phone: $("#v_rphone").value.trim(), zip: $("#v_rzip").value.trim(), address: $("#v_raddr").value.trim() },
     extraInfo: $("#v_extra").value,
   }
