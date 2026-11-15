@@ -732,8 +732,16 @@ async function createNew(job: any) {
       it.maximumBuyCount = Number(base.maximumBuyCount) || 999
       it.attributes = (am.attributes || []).filter((a: any) => a?.attributeTypeName && a?.attributeValueName).map((a: any) => ({ attributeTypeName: String(a.attributeTypeName), attributeValueName: String(a.attributeValueName) }))
       // 카테고리에 없는 속성·추측한 개당 중량은 버린다
-      const metaNames = new Set((meta?.attributes || []).map((a: any) => a.attributeTypeName))
-      it.attributes = it.attributes.filter((a: any) => metaNames.has(a.attributeTypeName) && !/개당/.test(a.attributeTypeName))
+      const metaBy = new Map((meta?.attributes || []).map((a: any) => [a.attributeTypeName, a]))
+      const mandNames = new Set(mand.map((a: any) => a.attributeTypeName))
+      // 필수 구매옵션은 아래에서 정해진 형식으로 다시 채우고, 그 밖의 구매옵션(EXPOSED)은 넣지 않는다(쿠팡 구매옵션 최대 3개)
+      it.attributes = it.attributes.filter((a: any) => {
+        const m: any = metaBy.get(a.attributeTypeName)
+        if (!m || mandNames.has(a.attributeTypeName)) return false
+        if (m.exposed === "EXPOSED") return false
+        if (m.dataType === "NUMBER" && !/^\d+(\.\d+)?\D*$/.test(a.attributeValueName)) return false
+        return true
+      })
       // 필수 구매옵션이 빠졌으면 옵션 이름에서 채운다
       const has = new Set(it.attributes.map((a: any) => a.attributeTypeName))
       const groupsDone = new Set<string>()
@@ -748,7 +756,7 @@ async function createNew(job: any) {
         const per = (job.perPieceGram || {})[nm]
         if (/개당/.test(t)) { if (per) v = `${per}g` }
         else if (/중량|무게/.test(t) && kg) v = a.basicUnit === "g" ? `${Number(kg[1]) * 1000}g` : `${kg[1]}kg`
-        else if (/수량/.test(t)) v = "1개"
+        else if (/수량/.test(t)) v = `1${a.basicUnit && a.basicUnit !== "없음" ? a.basicUnit : "개"}`
         else if (/등급|크기|사이즈|과/.test(t)) v = (nm.match(/특대|대과|중과|소과|특|대|중|소/) || [""])[0]
         if (v) { it.attributes.push({ attributeTypeName: t, attributeValueName: v }); if (a.groupNumber && a.groupNumber !== "NONE") groupsDone.add(a.groupNumber) }
       }
