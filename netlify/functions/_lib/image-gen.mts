@@ -142,3 +142,59 @@ export async function makeShots(shots: Shot[], photoUrls: string[], origin: stri
   }
   return out
 }
+
+
+// 실제 사진이 없을 때: 글 설명만으로 대표사진을 만들고, AI가 품질을 채점해 통과분만 저장한다
+async function openaiGenerate(prompt: string) {
+  const base = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "")
+  const r = await fetch(`${base}/images/generations`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: JSON.stringify({ model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.6-sunburst", prompt, size: "1024x1024", quality: "high", output_format: "jpeg", output_compression: 90, n: 1 }),
+  })
+  const j: any = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error("OpenAI 이미지 오류: " + (j?.error?.message || r.status))
+  const b64 = j?.data?.[0]?.b64_json
+  if (!b64) throw new Error("OpenAI가 이미지를 돌려주지 않았습니다.")
+  return b64 as string
+}
+
+const MAIN_CHECK = `쿠팡 신선식품 대표사진 검수자입니다. 사진이 설명한 과일과 같은지, 실제 사진처럼 자연스러운지 판정합니다.
+바로 탈락(2점 이하): 글자·숫자·로고·워터마크(뭉개진 글자 포함), 다른 과일, 모양이 찌그러짐·녹아 붙음, 3D 렌더·그림 느낌, 실제보다 과하게 크고 매끈함.
+쿠팡 대표사진 기준: 흰색 또는 아주 밝은 단색 배경, 상품이 가운데 크게, 테두리·장식 없음.
+JSON 한 줄만: {"score": 0~10, "pass": true/false, "reasons": "한국어 한두 문장"}`
+
+export async function makeMainImage(what: string, origin: string): Promise<{ ok: boolean; url?: string; score?: number; tries: any[]; error?: string }> {
+  const client = new Anthropic()
+  const tries: any[] = []
+  const prompt = [
+    `Product photo for a Korean online grocery listing: ${what}.`,
+    "Pure white seamless background, the fruit centered and filling about 70% of the frame, a few whole fruits plus one cut in half to show the flesh, soft natural studio light, true-to-life color and size, real photograph shot on a full-frame camera.",
+    "No text, no letters, no numbers, no logos, no watermark, no box print, no hands, no props, no border.",
+  ].join(" ")
+  try {
+    let best: { b64: string; score: number } | null = null
+    for (let i = 0; i < MAX_TRIES; i++) {
+      const b64 = await openaiGenerate(prompt)
+      const msg: any = await aiCreate(client, {
+        model: process.env.AI_MODEL || "claude-sonnet-5-5",
+        max_tokens: 400,
+        system: MAIN_CHECK,
+        messages: [{ role: "user", content: [{ type: "text", text: `설명: ${what}` }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }] }],
+      })
+      const t = msg.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
+      let c = { score: 0, pass: false, reasons: "검수 결과를 읽지 못함" }
+      try { const j = JSON.parse((t.match(/\{[\s\S]*\}/) || [t])[0]); c = { score: Math.round(Number(j.score) || 0), pass: !!j.pass && Number(j.score) >= PASS_SCORE, reasons: String(j.reasons || "") } } catch {}
+      tries.push(c)
+      if (c.pass && (!best || c.score > best.score)) best = { b64, score: c.score }
+      if (c.pass && c.score >= 8) break
+    }
+    if (!best) return { ok: false, tries, error: "검수를 통과한 사진이 없습니다." }
+    const key = `${randomUUID()}.jpg`
+    const buf = Buffer.from(best.b64, "base64")
+    await getStore({ name: "public-images", consistency: "strong" }).set(key, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, { metadata: { ai: "1", what } })
+    return { ok: true, url: `${origin}/img/${key}`, score: best.score, tries }
+  } catch (e: any) {
+    return { ok: false, tries, error: String(e?.message || e) }
+  }
+}

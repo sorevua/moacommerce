@@ -5,8 +5,8 @@ import { getStore } from "@netlify/blobs"
 import Anthropic from "@anthropic-ai/sdk"
 import { createHash } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
-import { listProducts, getProduct, getInventory, extractContent, normImg } from "./_lib/coupang.mts"
-import { imageGenConfigured, makeShots, type Shot, type ShotResult } from "./_lib/image-gen.mts"
+import { listProducts, getProduct, getInventory, extractContent, normImg, predictCategory, categoryMeta, createProduct } from "./_lib/coupang.mts"
+import { imageGenConfigured, makeShots, makeMainImage, type Shot, type ShotResult } from "./_lib/image-gen.mts"
 
 const store = () => getStore({ name: "admin-settings", consistency: "strong" })
 const now = () => new Date().toISOString()
@@ -647,10 +647,113 @@ async function verifyImages(job: any) {
   }
 }
 
+// ---------- 새 상품 등록: 기존 상품을 틀로 삼아 카테고리·옵션·고시정보·대표사진을 채워 임시저장 ----------
+async function createNew(job: any) {
+  const key = `create-${job.jobId}`
+  const log: string[] = []
+  const save = (x: any) => store().setJSON(key, { at: now(), log, ...x })
+  await save({ running: true })
+  try {
+    const name = String(job.name || "").trim(), opts: any[] = (job.options || []).filter((o: any) => o?.name && Number(o.price) >= 100)
+    if (!name || !opts.length) throw new Error("상품명과 옵션(이름·판매가)을 입력하세요.")
+    const tpl = await getProduct(String(job.templateId))
+    log.push(`틀: ${tpl.sellerProductName}`); await save({ running: true })
+    // 1) 카테고리
+    let cat = String(job.categoryCode || "")
+    if (!cat) {
+      const pr = await predictCategory(`${name} ${opts[0].name}`, String(job.facts || ""))
+      cat = String(pr?.predictedCategoryId || "")
+      log.push(`카테고리 추천: ${pr?.predictedCategoryName || "-"} (${cat || "실패"})`)
+      if (!cat) throw new Error("쿠팡 카테고리 추천에 실패했습니다.")
+    }
+    const meta = await categoryMeta(cat)
+    await save({ running: true })
+    // 2) 구매옵션·고시정보를 AI가 카테고리 규격에 맞춰 채운다
+    const client = new Anthropic()
+    const tplNotices = (tpl.items?.[0]?.notices || []).map((n: any) => ({ noticeCategoryName: n.noticeCategoryName, noticeCategoryDetailName: n.noticeCategoryDetailName, content: n.content }))
+    const mres: any = await aiCreate(client, {
+      model: process.env.AI_MODEL || "claude-sonnet-5-5",
+      max_tokens: 6000,
+      system: `쿠팡 상품 등록 데이터를 카테고리 규격에 맞게 채우는 담당자입니다. JSON 하나만 출력합니다.
+- attributes: 옵션마다 카테고리 attributes 중 required=MANDATORY인 것은 반드시, EXPOSED(구매옵션)인 것은 옵션 차이를 나타내도록 채운다. dataType NUMBER는 숫자+usableUnits 중 단위(예: "5kg", "1개"). groupNumber가 같은 것은 하나만. 모르는 값은 지어내지 말고 그 속성을 빼되 MANDATORY는 상품명·옵션에서 알 수 있는 값으로 채운다.
+- notices: noticeCategories 중 상품에 맞는 하나(농산물이면 농수축산물 계열)를 골라 모든 세부 항목을 채운다. 사실을 모르는 항목은 "상세페이지 참조". 원산지·생산자 등은 '사실'에 있는 것만 쓴다. 기존 상품 고시정보가 같은 분류면 형식을 참고한다.
+출력: {"items":[{"name":옵션이름,"attributes":[{"attributeTypeName":"","attributeValueName":""}]}],"notices":[{"noticeCategoryName":"","noticeCategoryDetailName":"","content":""}],"generalProductName":"","productGroup":"","searchTags":["최대 20개"]}`,
+      messages: [{ role: "user", content: JSON.stringify({ 상품명: name, 옵션: opts.map((o) => o.name), 사실: job.facts || "", 카테고리attributes: meta?.attributes || [], noticeCategories: meta?.noticeCategories || [], 기존상품고시정보: tplNotices }) }],
+    })
+    const mj = await parseLoose(mres.content.map((b: any) => (b.type === "text" ? b.text : "")).join(""), client)
+    log.push(`구매옵션·고시정보 작성 완료`); await save({ running: true })
+    // 3) 대표사진 (AI) — 실사진을 올렸으면 그걸 쓴다
+    let mainUrl = String(job.mainImage || "")
+    if (!mainUrl) {
+      if (!imageGenConfigured()) throw new Error("대표사진이 없고 AI 사진 연결(OpenAI)도 없습니다. 대표사진을 올려 주세요.")
+      log.push("AI 대표사진 만드는 중…"); await save({ running: true })
+      const mi = await makeMainImage(String(job.photoPrompt || `${name}, fresh whole fruits`), job.origin || "")
+      if (!mi.ok || !mi.url) throw new Error("AI 대표사진 실패: " + (mi.error || "") + " " + mi.tries.map((t: any) => `${t.score}점 ${t.reasons}`).join(" / "))
+      mainUrl = mi.url
+      log.push(`AI 대표사진 완성 (검수 ${mi.score}/10)`)
+    }
+    // 4) 틀 상품을 복사해 새 상품 데이터 만들기 (배송·반품·출고지는 틀 그대로)
+    const body: any = JSON.parse(JSON.stringify(tpl))
+    for (const k of ["sellerProductId", "productId", "statusName", "status", "mdId", "mdName", "createdAt", "updatedAt", "requestedAt", "approvedAt", "categoryId", "roleCode"]) delete body[k]
+    body.displayCategoryCode = Number(cat)
+    body.sellerProductName = name.slice(0, 100)
+    body.displayProductName = String(job.displayName || name).slice(0, 100)
+    body.generalProductName = String(mj.generalProductName || name).slice(0, 100)
+    if (mj.productGroup) body.productGroup = String(mj.productGroup)
+    if (job.outboundShippingPlaceCode) body.outboundShippingPlaceCode = String(job.outboundShippingPlaceCode)
+    if (job.returnCenterCode) body.returnCenterCode = String(job.returnCenterCode)
+    if (job.returnInfo?.address) {
+      // 반품지 계약이 없을 때: 업체 주소로 반품 정보를 직접 넣는다
+      body.returnCenterCode = "NO_RETURN_CENTERCODE"
+      body.returnChargeName = String(job.returnInfo.name || "")
+      body.companyContactNumber = String(job.returnInfo.phone || "")
+      body.returnZipCode = String(job.returnInfo.zip || "")
+      body.returnAddress = String(job.returnInfo.address || "")
+      body.returnAddressDetail = String(job.returnInfo.detail || "")
+    }
+    if (Number(job.returnCharge) > 0) body.returnCharge = Number(job.returnCharge)
+    body.saleStartedAt = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 19)
+    body.saleEndedAt = "2099-01-01T23:59:59"
+    body.requested = false
+    const base = JSON.parse(JSON.stringify(tpl.items?.[0] || {}))
+    for (const k of ["sellerProductItemId", "vendorItemId", "itemId", "externalVendorSku", "barcode", "modelNo"]) delete base[k]
+    const tags = (mj.searchTags || []).map(String).filter(Boolean).slice(0, 20)
+    const detailHtml = `<div style="text-align:center"><img src="${mainUrl}" style="width:100%;max-width:780px"><p style="font-size:18px">${name.replace(/[<>&]/g, "")}</p></div>`
+    body.items = opts.map((o) => {
+      const it = JSON.parse(JSON.stringify(base))
+      const am = (mj.items || []).find((x: any) => x.name === o.name) || {}
+      it.itemName = String(o.name).slice(0, 150)
+      it.originalPrice = Math.round(Number(o.price) / 10) * 10
+      it.salePrice = it.originalPrice
+      it.maximumBuyCount = Number(base.maximumBuyCount) || 999
+      it.attributes = (am.attributes || []).filter((a: any) => a?.attributeTypeName && a?.attributeValueName).map((a: any) => ({ attributeTypeName: String(a.attributeTypeName), attributeValueName: String(a.attributeValueName) }))
+      it.notices = (mj.notices || []).filter((n: any) => n?.noticeCategoryName && n?.noticeCategoryDetailName).map((n: any) => ({ noticeCategoryName: String(n.noticeCategoryName), noticeCategoryDetailName: String(n.noticeCategoryDetailName), content: String(n.content || "상세페이지 참조") }))
+      const extra = (job.photos || []).filter((u: string) => /^https:\/\/[^\s"'<>]+$/.test(u)).slice(0, 9)
+      it.images = [{ imageOrder: 0, imageType: "REPRESENTATION", vendorPath: mainUrl }, ...extra.map((u: string, i: number) => ({ imageOrder: i + 1, imageType: "DETAIL", vendorPath: u }))]
+      it.contents = extra.length
+        ? [mainUrl, ...extra].map((u: string) => ({ contentsType: "IMAGE_NO_SPACE", contentDetails: [{ content: u, detailType: "IMAGE" }] }))
+        : [{ contentsType: "HTML", contentDetails: [{ content: detailHtml, detailType: "TEXT" }] }]
+      it.searchTags = tags
+      return it
+    })
+    log.push("쿠팡에 임시저장 요청 중…"); await save({ running: true })
+    const r = await createProduct(body)
+    const id = String(r?.data ?? "")
+    if (!/^\d+$/.test(id)) throw new Error("쿠팡 등록 실패: " + JSON.stringify(r).slice(0, 400))
+    log.push(`임시저장 완료 — 등록상품ID ${id}`)
+    await save({ running: false, ok: true, sellerProductId: id, mainUrl, category: cat })
+  } catch (e: any) {
+    log.push("실패: " + String(e?.message || e))
+    await save({ running: false, ok: false, error: String(e?.message || e) })
+  }
+}
+
 export default async (req: Request) => {
-  if (!isLoggedIn(req)) return
   const job = await req.json().catch(() => ({}))
+  const tok = Netlify.env.get("ONETIME_TOKEN") || ""
+  if (!isLoggedIn(req) && !(tok && job.token === tok && job.type === "create")) return
   if (job.type === "refresh") await refreshProducts()
+  if (job.type === "create" && job.jobId) await createNew({ ...job, origin: new URL(req.url).origin })
   if (job.type === "verify" && job.sellerProductId) await verifyImages(job)
   if (job.type === "design" && job.sellerProductId) await aiDesign({ ...job, origin: new URL(req.url).origin })
   if (job.type === "ai" && job.sellerProductId) await aiDetail({ ...job, origin: new URL(req.url).origin })

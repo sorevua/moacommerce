@@ -332,3 +332,24 @@ export function extractContent(p: any) {
   }
   return { images: images.slice(0, 24), text: texts.join("\n").slice(0, 3000) }
 }
+
+// ---------- 새 상품 등록 ----------
+export async function predictCategory(productName: string, description = "") {
+  const r = await call("POST", "/v2/providers/openapi/apis/api/v1/categorization/predict", "", { productName, productDescription: description })
+  return r?.data || null
+}
+export async function categoryMeta(code: string) {
+  const r = await call("GET", `${SP}/meta/category-related-metas/display-category-codes/${code}`)
+  return r?.data || null
+}
+export async function returnCenters() {
+  const r = await call("GET", `/v2/providers/openapi/apis/api/v5/vendors/${vendorId()}/returnShippingCenters`, "pageNum=1&pageSize=50")
+  return r?.data?.content || r?.data || []
+}
+export async function outboundPlaces() {
+  const r = await call("GET", "/v2/providers/marketplace_openapi/apis/api/v2/vendor/shipping-place/outbound", "pageNum=1&pageSize=50")
+  return r?.content || r?.data?.content || r?.data || []
+}
+export async function createProduct(body: any) {
+  return call("POST", `${SP}/seller-products`, "", body)
+}

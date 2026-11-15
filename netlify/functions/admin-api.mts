@@ -2,7 +2,7 @@ import type { Config, Context } from "@netlify/functions"
 import { getStore } from "@netlify/blobs"
 import { randomUUID } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
-import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS, changePrice, stopSale, resumeSale, updateProductContent, cleanTags } from "./_lib/coupang.mts"
+import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS, changePrice, stopSale, resumeSale, updateProductContent, cleanTags, returnCenters, outboundPlaces, predictCategory } from "./_lib/coupang.mts"
 
 // ---------- 저장소 ----------
 const store = (name: string) => getStore({ name, consistency: "strong" })
@@ -304,6 +304,17 @@ export default async (req: Request, context: Context) => {
         return json({ ok: failed.length === 0, acknowledged: okBoxes.size, failed })
       }
 
+      if (id === "create" && sub && method === "GET") {
+        return json((await settingsStore().get(`create-${sub}`, { type: "json" })) || {})
+      }
+      if (id === "logistics" && method === "GET") {
+        const [rc, ob] = await Promise.all([returnCenters().catch((e: any) => ({ error: String(e.message) })), outboundPlaces().catch((e: any) => ({ error: String(e.message) }))])
+        return json({ returnCenters: rc, outboundPlaces: ob })
+      }
+      if (id === "category" && method === "POST") {
+        const b = await req.json()
+        return json((await predictCategory(String(b.name || ""), String(b.desc || ""))) || {})
+      }
       if (id === "verify" && sub && method === "GET") {
         return json((await settingsStore().get(`verify-${sub}`, { type: "json" })) || {})
       }
