@@ -400,7 +400,9 @@ const DESIGN_SYSTEM = `당신은 한국 오픈마켓 신선식품 상세페이�
 - 판매자가 추가한 사진은 반드시 쓴다(설명이 있으면 그 설명을 caption이나 note에 살린다).
 - hero.photo는 가장 먹음직스럽고 글자가 없는 깨끗한 사진.
 - 사진 제목·설명(title·caption)은 그 사진에 실제로 보이는 것만 쓴다. 사진에 없는 장면(나무에 달린 모습, 하우스, 완충재 등)을 지어내면 안 된다. 보이는 게 애매하면 caption을 비운다.
-- 한 사진은 한 번만 쓴다(hero·proof·gallery 통틀어).
+- 한 사진은 한 번만 쓴다(hero·proof·gallery·points 통틀어).
+- 글자·배너가 이미 들어간 홍보 이미지(다른 곳에서 만든 상세 이미지)는 사진으로 쓰지 않는다. 글자 없는 실제 사진만 쓴다. 홍보 이미지 속 문구는 참고만 하되, 근거 없는 수치·후기·"한 번만 주문한 사람은 없다" 같은 주장은 옮기지 않는다.
+- 후기·별점·고객 리뷰는 절대 만들지 않는다.
 
 [글 규칙]
 - 사실 근거는 판매자메모·확인된공통사실·과일정보·배송반품안내·판매자소개·사진 설명뿐. 없는 수치·인증·수상·판매량·후기·순위 금지.
@@ -418,7 +420,10 @@ const DESIGN_SYSTEM = `당신은 한국 오픈마켓 신선식품 상세페이�
  "analysis": "사진별 판단 한 줄씩 + 판매자가 확인할 점",
  "hero": {"photo": 사진번호, "badge": "공통 사실에 산지직송이 있으면 '산지직송', 없으면 빈 문자열", "eyebrow": "작은 위 문구", "headline": "큰 제목", "highlight": "headline 안에서 색으로 강조할 단어(headline에 포함된 그대로)", "sub": "한 줄 설명"},
  "intro": "첫 화면 아래 한두 문장 소개",
- "points": [{"title": "포인트 제목(10자 이내)", "desc": "한 줄 설명"}],
+ "points": [{"title": "포인트 제목(10자 이내)", "desc": "한 줄 설명", "photo": 그 포인트를 보여 주는 사진번호 또는 null}],
+ "keywords": ["첫 화면 아래 띠에 넣을 짧은 강점 3개(각 6자 이내, 근거 있는 것만. 예: 산지직송, 방송 출연, 상자 포함)"],
+ "worries": ["구매자가 과일 살 때 흔히 하는 걱정 3개(예: 받아 보니 신맛만 나면 어쩌지?) — 일반적인 걱정만, 경쟁사 비방 금지"],
+ "answer": "걱정에 대한 한 줄 답(근거 있는 사실만)",
  "proof": null 또는 {"photo": 사진번호 또는 null, "label": "예: 비파괴 당도계 측정 예시", "value": "16.6", "unit": "Brix", "note": "측정 조건·개체 차이 안내"},
  "story": null 또는 {"label": "예: TV 방송 출연 농가", "title": "짧은 제목", "text": "한두 문장"},
  "gallery": [{"photo": 사진번호, "title": "짧은 제목", "caption": "한 줄 설명"}],
@@ -528,6 +533,7 @@ async function aiDesign(job: any) {
     if (d.hero) d.hero.photo = ph(d.hero.photo) || photos[0]?.url || ""
     if (d.proof) d.proof.photo = ph(d.proof.photo)
     d.gallery = (d.gallery || []).map((g: any) => ({ ...g, photo: ph(g.photo) })).filter((g: any) => g.photo)
+    d.points = (d.points || []).map((x: any) => ({ ...x, photo: ph(x.photo) }))
     // 추가한 사진이 빠졌으면 갤러리에 넣는다
     const used = new Set([d.hero?.photo, d.proof?.photo, ...d.gallery.map((g: any) => g.photo)])
     const warnings: string[] = []
@@ -537,7 +543,7 @@ async function aiDesign(job: any) {
     for (const mm of JSON.stringify(d).matchAll(/(\d+(?:\.\d+)?)\s*(?:brix|브릭스)/gi)) if (!source.includes(mm[1])) warnings.push(`메모에 없는 당도 ${mm[1]}가 있습니다. 확인하세요.`)
     if (d.proof?.value && !source.includes(String(d.proof.value))) { warnings.push(`근거 없는 측정값 ${d.proof.value}를 뺐습니다.`); d.proof = null }
     // 같은 사진 반복 금지
-    const seen = new Set<string>([d.hero?.photo, d.proof?.photo].filter(Boolean))
+    const seen = new Set<string>([d.hero?.photo, d.proof?.photo, ...d.points.map((x: any) => x.photo)].filter(Boolean))
     d.gallery = d.gallery.filter((g: any) => (seen.has(g.photo) ? false : (seen.add(g.photo), true)))
     // 섹션별 연출 사진 생성 (자동 검수 통과분만)
     d.scenesOut = {}
