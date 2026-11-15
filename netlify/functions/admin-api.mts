@@ -2,7 +2,7 @@ import type { Config, Context } from "@netlify/functions"
 import { getStore } from "@netlify/blobs"
 import { randomUUID } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
-import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS, changePrice, stopSale, resumeSale, updateProductContent, cleanTags, returnCenters, outboundPlaces, predictCategory } from "./_lib/coupang.mts"
+import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS, changePrice, stopSale, resumeSale, updateProductContent, cleanTags, returnCenters, outboundPlaces, predictCategory, productHistory } from "./_lib/coupang.mts"
 
 // ---------- 저장소 ----------
 const store = (name: string) => getStore({ name, consistency: "strong" })
@@ -364,6 +364,7 @@ export default async (req: Request, context: Context) => {
         await settingsStore().setJSON(`cp-extra-${sub}`, clean)
         return json(clean)
       }
+      if (id === "history" && sub && method === "GET") return json(await productHistory(sub))
       // ----- 상품 관리 -----
       if (id === "products" && method === "GET" && !sub) {
         return json((await settingsStore().get("coupang-products", { type: "json" })) || { products: [] })

@@ -260,6 +260,12 @@ export async function getProduct(sellerProductId: string) {
   return data.data
 }
 
+export async function productHistory(sellerProductId: string) {
+  const h = await call("GET", `${SP}/seller-products/${sellerProductId}/histories`).catch((e: any) => ({ error: String(e?.message || e) }))
+  const p = await call("GET", `${SP}/seller-products/${sellerProductId}`).catch((e: any) => ({ error: String(e?.message || e) }))
+  return { status: p?.data?.statusName || p?.data?.status || p?.error, history: h?.data ?? h }
+}
+
 export async function getInventory(vendorItemId: string) {
   const data = await call("GET", `${SP}/vendor-items/${vendorItemId}/inventories`)
   return data?.data || null
