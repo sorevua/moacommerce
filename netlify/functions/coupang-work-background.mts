@@ -414,7 +414,7 @@ const DESIGN_SYSTEM = `당신은 한국 오픈마켓 신선식품 상세페이�
 - shipping은 배송반품안내의 내용을 빠짐없이, 바꾸거나 더하지 말고 항목별로 나눈다.
 - guide는 과일정보에 있는 내용만, 항목별로 나눈다. 과일정보가 비면 빈 배열.
 
-[출력 — JSON 하나만, 다른 말 금지]
+[출력 — JSON 하나만, 다른 말 금지. 문자열 안에 큰따옴표(")를 쓰지 말고 필요하면 작은따옴표나 「」를 쓴다]
 {
  "title": "노출상품명 50자 이내 (품목·산지·특징·중량, 메모에 없는 수치 금지)",
  "tags": ["검색어 최대 20개, 각 20자 이내, 특수문자 없이"],
@@ -440,6 +440,24 @@ const DESIGN_SYSTEM = `당신은 한국 오픈마켓 신선식품 상세페이�
 - hero: 대표 장면(예: 나무 테이블 위 바구니에 담긴 과일, 잎 달린 과일, 자연광). intro: 산지·수확 분위기. option: 상자에 담긴 모습. guide: 껍질 벗긴 과육·먹는 장면. brand: 차분한 정물.
 - base는 그 과일이 가장 잘 보이는 실제 사진 번호(글자 없는 사진). 과일 품종·색·크기는 실제와 같게 유지하고 연출만 바꾼다. 글자·로고 금지.
 points는 3개(근거 부족하면 2개), gallery는 쓸 수 있는 실제 사진 전부(hero·proof에 쓴 사진 제외, 최대 6장).`
+
+// AI가 준 JSON이 조금 깨져 있어도 살려 낸다 (끝 쉼표 제거 → 그래도 안 되면 AI에게 고쳐 달라고 요청)
+async function parseLoose(text: string, client?: Anthropic): Promise<any> {
+  const m = text.match(/[\[{][\s\S]*[\]}]/)
+  const raw = m ? m[0] : text
+  const tries = [raw, raw.replace(/,\s*([\]}])/g, "$1"), raw.replace(/,\s*([\]}])/g, "$1").replace(/[\u201c\u201d]/g, '\\"')]
+  for (const t of tries) { try { return JSON.parse(t) } catch {} }
+  if (!client) throw new Error("AI 응답 형식 오류")
+  const fix: any = await client.messages.create({
+    model: process.env.AI_MODEL || "claude-sonnet-5-5",
+    max_tokens: 8000,
+    system: "깨진 JSON을 받아 문법만 고쳐 올바른 JSON으로 돌려줍니다. 문자열 안의 큰따옴표는 \\\" 로 이스케이프합니다. 내용은 한 글자도 바꾸지 않습니다. JSON만 출력.",
+    messages: [{ role: "user", content: raw }],
+  })
+  const ft = fix.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
+  const fm = ft.match(/[\[{][\s\S]*[\]}]/)
+  return JSON.parse(fm ? fm[0] : ft)
+}
 
 async function aiDesign(job: any) {
   const key = `design-${job.sellerProductId}`
@@ -509,7 +527,7 @@ async function aiDesign(job: any) {
     const text = msg.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
     const m = text.match(/\{[\s\S]*\}/)
     if (!m) throw new Error("AI 응답을 읽지 못했습니다. 다시 시도해 주세요.")
-    let d = JSON.parse(m[0])
+    let d = await parseLoose(m[0], client)
     // 맞춤법·띄어쓰기 교정 (사실·숫자는 그대로)
     const proofFixes: string[] = []
     try {
@@ -525,7 +543,7 @@ async function aiDesign(job: any) {
       const pt = pr.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
       const pm = pt.match(/\{[\s\S]*\}/)
       if (pm) {
-        const pj = JSON.parse(pm[0])
+        const pj = await parseLoose(pm[0])
         const nums = (o: any) => (JSON.stringify(o).match(/\d+(?:\.\d+)?/g) || []).sort().join(",")
         if (pj.fixed && nums(pj.fixed) === nums(d)) { d = pj.fixed; proofFixes.push(...(pj.changes || []).map(String)) }
       }
@@ -593,7 +611,7 @@ async function verifyImages(job: any) {
       })
       const t = msg.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
       const mm = t.match(/\[[\s\S]*\]/)
-      if (mm) results.push(...JSON.parse(mm[0]))
+      if (mm) results.push(...(await parseLoose(mm[0], client)))
     }
     await store().setJSON(key, { running: false, at: now(), results })
   } catch (e: any) {
