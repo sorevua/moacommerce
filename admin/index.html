@@ -255,7 +255,7 @@ function renderCp() {
     const tags = p.searchTags || []
     return `<div class="card" data-spid="${esc(p.sellerProductId)}">
       <div class="row" style="justify-content:space-between"><div><strong>${esc(name)}</strong> <span class="note">#${esc(p.sellerProductId)} · ${esc(p.status || "")}</span></div>
-        <div class="row"><button class="btn small cpstopall" data-spid="${esc(p.sellerProductId)}" style="border-color:#b91c1c;color:#b91c1c">이 상품 전체 판매중지</button><button class="btn small cpresall" data-spid="${esc(p.sellerProductId)}">전체 재개</button><button class="btn small cpedit" data-spid="${esc(p.sellerProductId)}">상품명·검색어·상세페이지 수정</button></div></div>
+        <div class="row"><button class="btn small cpstopall" data-spid="${esc(p.sellerProductId)}" style="border-color:#b91c1c;color:#b91c1c">이 상품 전체 판매중지</button><button class="btn small cpresall" data-spid="${esc(p.sellerProductId)}">전체 재개</button><button class="btn small accent cpauto" data-spid="${esc(p.sellerProductId)}">✨ AI 상세 자동 제작</button><button class="btn small cpedit" data-spid="${esc(p.sellerProductId)}">직접 수정</button></div></div>
       ${p.error ? `<div class="warn">${esc(p.error)}</div>` : ""}
       <div class="note" style="margin:6px 0">검색어 ${tags.length}/20 ${tags.length < 10 ? "· 검색어가 적습니다" : ""} · 배송: ${esc(p.delivery?.chargeType || "-")} ${p.delivery?.charge ? won(p.delivery.charge) + "원" : ""} (변경 안 함)</div>
       <div style="overflow-x:auto"><table><thead><tr><th></th><th>옵션</th><th>상태</th><th>판매가</th><th></th></tr></thead><tbody>${items}</tbody></table></div>
@@ -294,6 +294,13 @@ $("#cpList").addEventListener("click", async e => {
       toast(fail.length ? `${ids.length - fail.length}개 완료, ${fail.length}개 실패` : (stop ? "판매중지 완료" : "판매재개 완료"))
       if (fail.length) alert(fail.join("\n"))
     } else if (b.classList.contains("cpedit")) { return openCpEdit(b.dataset.spid) }
+    else if (b.classList.contains("cpauto")) {
+      const box = $(`.card[data-spid="${b.dataset.spid}"] .cpeditbox`)
+      if (!box.innerHTML) await openCpEdit(b.dataset.spid)
+      box.scrollIntoView({ behavior: "smooth" })
+      if (!$(".e_notes", box).value.trim()) { $(".e_notes", box).focus(); return toast("이 상품의 사실을 한 줄 적고 [✨ 자동 제작]을 누르세요.") }
+      return $(".e_go", box).click()
+    }
     else return
     CPP = await api("coupang/products"); renderCp()
   } catch (err) { toast(err.message); b.disabled = false }
@@ -590,7 +597,16 @@ async function openCpEdit(spid) {
   const copy = await api("coupang/copy").catch(() => ({}))
   const imgs = p.images || []
   box.innerHTML = `<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px">
-    <h3 style="margin:0 0 6px">① 사진 고르기</h3>
+    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:16px;margin-bottom:12px">
+      <div style="font-weight:900;font-size:18px">✨ 자동 제작 → 확인 → 등록</div>
+      <p class="note" style="margin:4px 0 10px">사진 고르기·디자인·검색어·맞춤법·글자 검사까지 AI가 다 합니다. 결과 점수를 보고 마음에 들면 [등록]만 누르세요.</p>
+      <label>이 상품의 사실 <span class="note">(한 번 적으면 저장됩니다 · 사실만)</span><textarea class="e_notes" rows="2" placeholder="예: 제주 유라귤(옐로향). TV 방송 출연 농가. 당도계 측정 예시 16.6 Brix(1개 측정)."></textarea></label>
+      <div class="row" style="margin-top:8px"><button class="btn accent e_go" style="font-size:16px;padding:12px 22px">✨ AI 상세페이지 자동 제작</button><span class="note e_gost"></span></div>
+      <div class="e_score"></div>
+      <div class="row" style="margin-top:8px"><button class="btn dark e_register hidden" style="font-size:16px;padding:12px 22px">✅ 이대로 쿠팡에 등록</button><button class="btn small e_again hidden">다시 만들기</button></div>
+    </div>
+    <details class="e_adv" style="margin:10px 0"><summary style="font-weight:700;cursor:pointer;color:var(--mute)">세부 설정 (안 건드려도 됩니다)</summary>
+    <h3 style="margin:10px 0 6px">① 사진 고르기</h3>
     <p class="note">AI가 사진을 직접 보고 분석합니다. 옛 문구(예: 13브릭스)가 박힌 사진처럼 쓰기 싫은 사진은 체크를 빼세요. 사진을 누르면 크게 보입니다.</p>
     <div class="e_imgs" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${imgs.map((u, i) => `<label style="width:110px;font-weight:400;text-align:center"><a href="${esc(u)}" target="_blank" rel="noopener"><img src="/api/admin/coupang/proxy?u=${encodeURIComponent(u)}" loading="lazy" style="width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a><br><input type="checkbox" class="e_use cpchk" data-u="${esc(u)}" checked> 사진 ${i + 1}</label>`).join("") || '<span class="note">등록된 사진을 찾지 못했습니다.</span>'}</div>
     <div style="background:#f7f7f4;border-radius:8px;padding:10px;margin:8px 0">
@@ -609,13 +625,12 @@ async function openCpEdit(spid) {
       <p class="note">일반적으로 알려진 보관법만 넣었습니다. 업체가 따로 안내하는 방법이 있으면 그 내용으로 바꿔 주세요. AI는 이 칸에 있는 정보만 씁니다.</p>
       <textarea class="e_guide" rows="7"></textarea>
     </details>
-    <h3 style="margin:14px 0 6px">② AI에게 알려줄 사실</h3>
-    <textarea class="e_notes" rows="3" placeholder="사실만 적으세요. 예: 제주 유라귤(엘로향). TV 방송 출연 농가. 당도계 측정 예시 16.6 Brix(1개 측정). 2kg·3kg·5kg 박스."></textarea>
     <label style="font-weight:400;margin:6px 0"><input type="checkbox" class="e_gen" checked style="width:auto"> 실제 사진으로 부족한 컷만 AI 연출 사진 만들기 <span class="note">(최대 2장 · 자동 검수 통과분만 · OpenAI 사용료 발생 · 네이버 신선식품엔 쓰지 말 것)</span></label>
     <label style="margin-top:8px">디자인 스타일 <select class="e_style" style="width:auto;margin-left:6px"><option value="card">카드형 (굵은 배너·사진 위 큰 글씨)</option><option value="minimal">미니멀 (고급·여백)</option></select></label>
     <label style="margin-top:8px">디자인 테마 <select class="e_theme" style="width:auto;margin-left:6px"><option value="citrus">감귤 오렌지</option><option value="premium">프리미엄 다크(선물용)</option><option value="fresh">싱그러운 그린</option><option value="berry">레드 베리(석류·딸기)</option><option value="clean">깔끔 화이트</option></select></label>
     <div class="row" style="margin:8px 0"><button class="btn accent e_design">③ 디자이너 이미지형 상세페이지 만들기 (추천)</button><span class="note e_dst"></span></div>
     <div class="row" style="margin:4px 0 8px"><button class="btn small e_ai">글자형(HTML) 상세페이지로 만들기</button><span class="note e_aist"></span></div>
+    </details>
     <div class="e_report"></div>
     <label>노출상품명 <span class="note">(100자 이내)</span><input class="e_title" value="${esc(p.displayProductName || p.sellerProductName)}"></label>
     <label>검색어 <span class="note">(쉼표로 구분, 최대 20개·각 20자)</span><textarea class="e_tags" rows="2">${esc((p.searchTags || []).join(", "))}</textarea></label>
@@ -668,7 +683,7 @@ async function openCpEdit(spid) {
       st.textContent = "추가됐습니다. 이제 ③ 버튼을 누르면 상세페이지에 들어갑니다."
     } catch (err) { st.textContent = "실패: " + err.message }
   }
-  $(".e_design", box).onclick = async () => {
+  const runDesign = async () => {
     const st = $(".e_dst", box); st.textContent = "사진 분석·글 작성·연출 사진 생성 중… (3~8분, 창을 닫지 마세요)"; $(".e_report", box).innerHTML = ""
     const btn = $(".e_design", box); btn.disabled = true
     try {
@@ -720,6 +735,48 @@ async function openCpEdit(spid) {
       st.textContent = `완성 — 이미지 ${urls.length}장, 위에서부터 순서대로 들어갑니다. 모든 옵션(${optNames})에 똑같이 적용됩니다.`
     } catch (err) { st.textContent = "실패: " + err.message } finally { btn.disabled = false }
   }
+  $(".e_design", box).onclick = runDesign
+  $(".e_notes", box).value = copy.notes?.[spid] ?? ""
+  const scoreIt = () => {
+    const c = runCheck(), v = box._verify || {}, tags = $(".e_tags", box).value.split(",").map(x => x.trim()).filter(Boolean)
+    const title = $(".e_title", box).value.trim(), n = (box._images || []).length
+    const good = [], fix = []
+    let sc = 100
+    sc -= c.errors.length * 25; c.errors.forEach(e => fix.push("❌ " + e))
+    sc -= c.warns.length * 5; c.warns.forEach(e => fix.push("⚠ " + e))
+    if (v.error) { sc -= 10; fix.push("⚠ 이미지 글자 검사를 못 했습니다. 미리보기 글자를 직접 확인하세요.") }
+    else if ((v.bad || []).length) { sc -= 15 * v.bad.length; v.bad.forEach(b => fix.push(`❌ 이미지 ${b.image}: ${(b.problems || []).join(" / ")}`)) }
+    else good.push("이미지 글자 검사 통과 (오타·잘림 없음)")
+    if (n >= 8) good.push(`상세 이미지 ${n}장 — 충분한 분량`); else { sc -= 5; fix.push(`⚠ 상세 이미지가 ${n}장뿐입니다 (사진이 더 있으면 좋아요)`) }
+    if (tags.length >= 15) good.push(`검색어 ${tags.length}개 — 검색 노출 범위 넓음`); else { sc -= 5; fix.push(`⚠ 검색어 ${tags.length}개 (15개 이상 권장)`) }
+    if (title.length >= 15 && title.length <= 50) good.push(`상품명 ${title.length}자 — 적당한 길이`); else { sc -= 5; fix.push(`⚠ 상품명 ${title.length}자 (15~50자 권장)`) }
+    if (!c.errors.length) good.push("과장·외부유도·근거 없는 수치 없음")
+    sc = Math.max(0, Math.min(100, sc))
+    const ok = !c.errors.length && !(v.bad || []).length
+    $(".e_score", box).innerHTML = `<div style="margin-top:12px;background:#fff;border-radius:10px;padding:14px;border:2px solid ${ok ? "#16a34a" : "#dc2626"}">
+      <div style="font-size:22px;font-weight:900;color:${ok ? "#16a34a" : "#dc2626"}">${sc}점 · ${ok ? "등록해도 좋습니다 ✅" : "고칠 곳이 있습니다"}</div>
+      ${good.map(g => `<div style="font-size:14px;margin-top:4px">✔ ${esc(g)}</div>`).join("")}
+      ${fix.map(f => `<div style="font-size:14px;margin-top:4px">${esc(f)}</div>`).join("")}
+      <div class="note" style="margin-top:6px">아래 미리보기로 디자인을 확인하세요. 마음에 안 들면 [다시 만들기].</div></div>`
+    $(".e_register", box).classList.toggle("hidden", !ok)
+    $(".e_again", box).classList.remove("hidden")
+    return ok
+  }
+  const go = async () => {
+    const b = $(".e_go", box), st = $(".e_gost", box)
+    b.disabled = true; $(".e_score", box).innerHTML = ""; $(".e_register", box).classList.add("hidden")
+    api("coupang/copy", { method: "PUT", body: JSON.stringify({ note: { id: spid, text: $(".e_notes", box).value.trim() } }) }).catch(() => {})
+    const tick = setInterval(() => { st.textContent = $(".e_dst", box).textContent }, 1000)
+    box._images = null
+    try { await runDesign() } finally { clearInterval(tick); b.disabled = false }
+    if (!box._images) { st.textContent = $(".e_dst", box).textContent; return }
+    st.textContent = "완성!"
+    scoreIt()
+    $(".e_prev", box).scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+  $(".e_go", box).onclick = go
+  $(".e_again", box).onclick = go
+  $(".e_register", box).onclick = () => { box._quick = true; $(".e_save", box).click() }
   $(".e_ai", box).onclick = async () => {
     const gen = $(".e_gen", box).checked
     const st = $(".e_aist", box); st.textContent = gen ? "사진 분석·작성 중… 필요한 연출 사진을 만들고 검수하면 3~8분 걸립니다." : "사진 분석·작성 중… (1~2분)"; $(".e_report", box).innerHTML = ""
@@ -745,9 +802,10 @@ async function openCpEdit(spid) {
     const tags = $(".e_tags", box).value.split(",").map(x => x.trim()).filter(Boolean)
     const chk = runCheck()
     if (chk.errors.length) return toast("자동 점검에서 ❌ 항목을 먼저 고쳐 주세요.")
-    if (box._images && box._verify?.bad?.length && !confirm(`이미지 글자 검사에서 문제가 ${box._verify.bad.length}장 나왔습니다. 그래도 올릴까요? (다시 만들기 권장)`)) return
-    if (chk.warns.length && !confirm("⚠ 확인 권장 항목이 있습니다:\n" + chk.warns.join("\n") + "\n\n그래도 진행할까요?")) return
-    if (!confirm("쿠팡에 수정 요청할까요? 승인 심사 후 반영되며, 그동안 기존 내용이 노출됩니다. 배송·반품 정보는 그대로 둡니다.")) return
+    if (box._images && box._verify?.bad?.length && !box._quick && !confirm(`이미지 글자 검사에서 문제가 ${box._verify.bad.length}장 나왔습니다. 그래도 올릴까요? (다시 만들기 권장)`)) return
+    if (chk.warns.length && !box._quick && !confirm("⚠ 확인 권장 항목이 있습니다:\n" + chk.warns.join("\n") + "\n\n그래도 진행할까요?")) return
+    const q = box._quick; box._quick = false
+    if (!confirm((q ? "이대로 쿠팡에 등록할까요?\n" : "") + "쿠팡에 수정 요청할까요? 승인 심사 후 반영되며, 그동안 기존 내용이 노출됩니다. 배송·반품 정보는 그대로 둡니다.")) return
     e.target.disabled = true
     try {
       const r = await api("coupang/products/" + spid, { method: "PUT", body: JSON.stringify({ displayProductName: $(".e_title", box).value.trim(), searchTags: tags, detailHtml: $(".e_html", box).value.trim(), detailImages: box._images || undefined }) })

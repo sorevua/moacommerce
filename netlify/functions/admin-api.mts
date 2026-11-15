@@ -338,7 +338,9 @@ export default async (req: Request, context: Context) => {
         const prevCopy: any = (await settingsStore().get("cp-copy", { type: "json" })) || {}
         const guides = { ...(prevCopy.guides || {}) }
         if (b.guide?.id) guides[String(b.guide.id)] = String(b.guide.text || "").slice(0, 3000)
-        const v = { brand: String(b.brand ?? prevCopy.brand ?? "").slice(0, 1000), shipping: String(b.shipping ?? prevCopy.shipping ?? "").slice(0, 2000), facts: String(b.facts ?? prevCopy.facts ?? "").slice(0, 1000), guides }
+        const notes = { ...(prevCopy.notes || {}) }
+        if (b.note?.id) notes[String(b.note.id)] = String(b.note.text || "").slice(0, 2000)
+        const v = { brand: String(b.brand ?? prevCopy.brand ?? "").slice(0, 1000), shipping: String(b.shipping ?? prevCopy.shipping ?? "").slice(0, 2000), facts: String(b.facts ?? prevCopy.facts ?? "").slice(0, 1000), guides, notes }
         await settingsStore().setJSON("cp-copy", v)
         return json(v)
       }
