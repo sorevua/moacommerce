@@ -776,6 +776,7 @@ async function createNew(job: any) {
       if (miss.length) throw new Error(`"${it.itemName}" 필수 정보가 없습니다: ${miss.join(", ")}. 업체에 확인해서 넣어 주세요.`)
     }
     log.push(`브랜드: ${body.brand} / 옵션1 속성: ${JSON.stringify(body.items[0]?.attributes || [])}`)
+    { const d: any = JSON.parse(JSON.stringify(body.items[0] || {})); delete d.images; delete d.contents; delete d.notices; delete d.searchTags; log.push("옵션1 전체: " + JSON.stringify(d).slice(0, 1500)) }
     log.push("쿠팡에 임시저장 요청 중…"); await save({ running: true })
     const r = await createProduct(body)
     const id = String(r?.data ?? "")
