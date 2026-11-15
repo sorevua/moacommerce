@@ -15,8 +15,8 @@ export default async (req: Request) => {
       vendorId: vendorId(), userId: p.vendorUserId, outboundShippingPlaceCode: o.outboundShippingPlaceCode,
       shippingPlaceName: o.shippingPlaceName, usable: true, global: "false",
       placeAddresses: [
-        { addressType: "JIBUN", countryCode: "KR", companyContactNumber: "010-8587-0003", phoneNumber2: "", returnZipCode: "57707", returnAddress: "전라남도 광양시 진상면 섬거리", returnAddressDetail: "458-3" },
-        { addressType: "ROADNAME", countryCode: "KR", companyContactNumber: "010-8587-0003", phoneNumber2: "", returnZipCode: "57707", returnAddress: "전라남도 광양시 진상면 신시3길", returnAddressDetail: "13-23" },
+        { addressType: "JIBUN", countryCode: "KR", companyContactNumber: "+821085870003", phoneNumber2: "", returnZipCode: "57707", returnAddress: "전라남도 광양시 진상면 섬거리", returnAddressDetail: "458-3" },
+        { addressType: "ROADNAME", countryCode: "KR", companyContactNumber: "+821085870003", phoneNumber2: "", returnZipCode: "57707", returnAddress: "전라남도 광양시 진상면 신시3길", returnAddressDetail: "13-23" },
       ],
       remoteInfos: [{ deliveryCode: "HANJIN", jeju: { currencyCode: "KRW", units: 5000, nanos: 0 }, notJeju: { currencyCode: "KRW", units: 5000, nanos: 0 }, usable: true }],
     }
