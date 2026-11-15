@@ -314,6 +314,15 @@ export default async (req: Request, context: Context) => {
         await getStore({ name: "public-images", consistency: "strong" }).set(key, await file.arrayBuffer())
         return json({ url: `${url.origin}/img/${key}` }, 201)
       }
+      if (id === "copy" && method === "GET") {
+        return json((await settingsStore().get("cp-copy", { type: "json" })) || {})
+      }
+      if (id === "copy" && method === "PUT") {
+        const b = await req.json()
+        const v = { brand: String(b.brand || "").slice(0, 1000), shipping: String(b.shipping || "").slice(0, 2000) }
+        await settingsStore().setJSON("cp-copy", v)
+        return json(v)
+      }
       if (id === "extras" && sub && method === "GET") {
         return json((await settingsStore().get(`cp-extra-${sub}`, { type: "json" })) || [])
       }
