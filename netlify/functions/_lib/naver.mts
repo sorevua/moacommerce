@@ -9,11 +9,11 @@ export function naverConfigured() {
   return !!(env("NAVER_CLIENT_ID") && env("NAVER_CLIENT_SECRET") && env("MAKE_RELAY_URL") && env("MAKE_RELAY_TOKEN"))
 }
 
-async function relay(method: string, url: string, auth: string, body: unknown) {
+async function relay(method: string, url: string, auth: string, body: unknown, ctype = "") {
   const res = await fetch(env("MAKE_RELAY_URL"), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: env("MAKE_RELAY_TOKEN"), method, url, auth, body: body === undefined ? (method === "GET" ? "" : "{}") : JSON.stringify(body) }),
+    body: JSON.stringify({ token: env("MAKE_RELAY_TOKEN"), method, url, auth, ctype, body: typeof body === "string" ? body : body === undefined ? (method === "GET" ? "" : "{}") : JSON.stringify(body) }),
   })
   const text = await res.text()
   const upstream = Number(res.headers.get("x-upstream-status") || 0)
@@ -34,7 +34,7 @@ export async function naverToken(force = false) {
   const ts = Date.now()
   const sign = Buffer.from(bcrypt.hashSync(`${id}_${ts}`, secret), "utf-8").toString("base64")
   const q = new URLSearchParams({ client_id: id, timestamp: String(ts), client_secret_sign: sign, grant_type: "client_credentials", type: "SELF" })
-  const r = await relay("POST", `${HOST}/v1/oauth2/token?${q}`, "", undefined)
+  const r = await relay("POST", `${HOST}/v1/oauth2/token`, "", q.toString(), "application/x-www-form-urlencoded")
   if (r.status >= 400 || !r.data?.access_token) throw new Error(`네이버 인증 실패 ${r.status}: ${r.data?.message || r.data?.raw || JSON.stringify(r.data).slice(0, 300)}`)
   await tokens().setJSON("naver-token", { access_token: r.data.access_token, expiresAt: Date.now() + Number(r.data.expires_in || 3600) * 1000 })
   return r.data.access_token as string
