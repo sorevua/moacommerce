@@ -255,7 +255,7 @@ function renderCp() {
     const tags = p.searchTags || []
     return `<div class="card" data-spid="${esc(p.sellerProductId)}">
       <div class="row" style="justify-content:space-between"><div><strong>${esc(name)}</strong> <span class="note">#${esc(p.sellerProductId)} · ${esc(p.status || "")}</span></div>
-        <button class="btn small cpedit" data-spid="${esc(p.sellerProductId)}">상품명·검색어·상세페이지 수정</button></div>
+        <div class="row"><button class="btn small cpstopall" data-spid="${esc(p.sellerProductId)}" style="border-color:#b91c1c;color:#b91c1c">이 상품 전체 판매중지</button><button class="btn small cpresall" data-spid="${esc(p.sellerProductId)}">전체 재개</button><button class="btn small cpedit" data-spid="${esc(p.sellerProductId)}">상품명·검색어·상세페이지 수정</button></div></div>
       ${p.error ? `<div class="warn">${esc(p.error)}</div>` : ""}
       <div class="note" style="margin:6px 0">검색어 ${tags.length}/20 ${tags.length < 10 ? "· 검색어가 적습니다" : ""} · 배송: ${esc(p.delivery?.chargeType || "-")} ${p.delivery?.charge ? won(p.delivery.charge) + "원" : ""} (변경 안 함)</div>
       <div style="overflow-x:auto"><table><thead><tr><th></th><th>옵션</th><th>상태</th><th>판매가</th><th></th></tr></thead><tbody>${items}</tbody></table></div>
@@ -282,6 +282,17 @@ $("#cpList").addEventListener("click", async e => {
       b.disabled = true; await cpItem(vid, { action: "stop" }); toast("판매중지 완료")
     } else if (b.classList.contains("cpres")) {
       b.disabled = true; await cpItem(vid, { action: "resume" }); toast("판매재개 완료")
+    } else if (b.classList.contains("cpstopall") || b.classList.contains("cpresall")) {
+      const stop = b.classList.contains("cpstopall")
+      const p = (CPP.products || []).find(x => x.sellerProductId === b.dataset.spid)
+      const ids = (p?.items || []).filter(i => i.vendorItemId && (stop ? i.onSale !== false : i.onSale === false)).map(i => i.vendorItemId)
+      if (!ids.length) return toast(stop ? "이미 모두 판매중지 상태입니다." : "이미 모두 판매중입니다.")
+      if (!confirm(`이 상품의 옵션 ${ids.length}개를 ${stop ? "판매중지(삭제 아님)" : "판매재개"}할까요? 쿠팡에 바로 반영됩니다.`)) return
+      b.disabled = true
+      let fail = []
+      for (const v of ids) { try { await cpItem(v, { action: stop ? "stop" : "resume" }) } catch (er) { fail.push(er.message) } }
+      toast(fail.length ? `${ids.length - fail.length}개 완료, ${fail.length}개 실패` : (stop ? "판매중지 완료" : "판매재개 완료"))
+      if (fail.length) alert(fail.join("\n"))
     } else if (b.classList.contains("cpedit")) { return openCpEdit(b.dataset.spid) }
     else return
     CPP = await api("coupang/products"); renderCp()
