@@ -18,7 +18,7 @@ export default async (req: Request) => {
         { addressType: "JIBUN", countryCode: "KR", companyContactNumber: "010-8587-0003", phoneNumber2: "", returnZipCode: "57707", returnAddress: "전라남도 광양시 진상면 섬거리", returnAddressDetail: "458-3" },
         { addressType: "ROADNAME", countryCode: "KR", companyContactNumber: "010-8587-0003", phoneNumber2: "", returnZipCode: "57707", returnAddress: "전라남도 광양시 진상면 신시3길", returnAddressDetail: "13-23" },
       ],
-      remoteInfos: [{ deliveryCode: "CJGLS", jeju: { currencyCode: "KRW", units: 5000, nanos: 0 }, notJeju: { currencyCode: "KRW", units: 5000, nanos: 0 }, usable: true }],
+      remoteInfos: [{ deliveryCode: "HANJIN", jeju: { currencyCode: "KRW", units: 5000, nanos: 0 }, notJeju: { currencyCode: "KRW", units: 5000, nanos: 0 }, usable: true }],
     }
     const r = await call("PUT", `/v2/providers/openapi/apis/api/v5/vendors/${vendorId()}/outboundShippingCenters/${o.outboundShippingPlaceCode}`, "", body).catch((e: any) => ({ error: String(e?.message || e) }))
     return Response.json({ userId: p.vendorUserId, r })
