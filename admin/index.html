@@ -359,6 +359,126 @@ function checkListing({ title, tags, html, notes }) {
   return { errors: [...new Set(errors)], warns: [...new Set(warns)] }
 }
 
+// ---------- 이미지형 상세페이지 (디자이너 템플릿) ----------
+const DTHEME = {
+  citrus: { main: "#F26B1D", deep: "#2A1708", soft: "#FFE9D6", band: "#FFF6EC", ink: "#22160C" },
+  premium: { main: "#B8924A", deep: "#17150F", soft: "#F2E7D2", band: "#F8F5EF", ink: "#17150F" },
+  fresh: { main: "#2F9E5B", deep: "#0F2C1C", soft: "#DDF3E5", band: "#F2FAF5", ink: "#13241A" },
+  berry: { main: "#D02944", deep: "#2B0A12", soft: "#FBDDE2", band: "#FFF4F6", ink: "#2A0F14" },
+  clean: { main: "#1F1F1F", deep: "#111111", soft: "#ECECEC", band: "#F6F6F4", ink: "#1A1A1A" },
+}
+const dx = s => esc(s ?? "")
+const proxied = u => !u ? "" : u.startsWith(location.origin) ? u : "/api/admin/coupang/proxy?u=" + encodeURIComponent(u)
+function designSections(d, themeKey) {
+  const t = DTHEME[themeKey] || DTHEME.citrus
+  const F = "font-family:Pretendard,'Pretendard Variable','Apple SD Gothic Neo','Malgun Gothic',sans-serif;"
+  const W = `width:780px;${F}color:${t.ink};word-break:keep-all;letter-spacing:-0.02em;`
+  const label = (txt, color = t.main) => `<div style="font-size:15px;font-weight:800;letter-spacing:5px;color:${color}">${dx(txt)}</div>`
+  const head = (lab, title, sub, dark) => `<div style="text-align:center;padding:110px 60px 56px">${label(lab, dark ? t.main : t.main)}<div style="font-size:46px;font-weight:900;line-height:1.3;margin-top:18px;color:${dark ? "#fff" : t.ink}">${title}</div>${sub ? `<div style="font-size:24px;line-height:1.6;color:${dark ? "rgba(255,255,255,.72)" : "#6b6b6b"};margin-top:18px;font-weight:500">${dx(sub)}</div>` : ""}</div>`
+  const hl = (text, word) => { const s = dx(text), w = dx(word); return w && s.includes(w) ? s.replace(w, `<span style="color:${t.main}">${w}</span>`) : s }
+  const out = []
+  const h = d.hero || {}
+  // 1. 히어로
+  out.push(`<section style="${W}position:relative;background:${t.deep};overflow:hidden">
+    ${h.photo ? `<img src="${proxied(h.photo)}" style="display:block;width:780px;height:1040px;object-fit:cover">` : `<div style="height:700px"></div>`}
+    <div style="position:absolute;left:0;right:0;bottom:0;height:720px;background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,.35) 35%,${t.deep} 100%)"></div>
+    <div style="position:absolute;left:0;right:0;bottom:0;padding:0 64px 88px;text-align:center;color:#fff">
+      ${h.badge ? `<div style="display:inline-block;background:${t.main};color:#fff;font-size:20px;font-weight:800;padding:10px 26px;border-radius:999px;letter-spacing:2px">${dx(h.badge)}</div>` : ""}
+      ${h.eyebrow ? `<div style="font-size:26px;font-weight:600;opacity:.9;margin-top:28px">${dx(h.eyebrow)}</div>` : ""}
+      <div style="font-size:76px;font-weight:900;line-height:1.18;margin-top:12px;letter-spacing:-0.04em">${hl(h.headline, h.highlight)}</div>
+      ${h.sub ? `<div style="font-size:25px;font-weight:500;opacity:.85;margin-top:22px;line-height:1.5">${dx(h.sub)}</div>` : ""}
+    </div></section>`)
+  // 2. 소개
+  if (d.intro) out.push(`<section style="${W}background:${t.deep};color:#fff;text-align:center;padding:20px 80px 110px">
+    <div style="width:2px;height:60px;background:${t.main};margin:0 auto 40px"></div>
+    <div style="font-size:30px;font-weight:600;line-height:1.7;opacity:.92">${dx(d.intro)}</div></section>`)
+  // 3. 포인트
+  if ((d.points || []).length) out.push(`<section style="${W}background:#fff;padding-bottom:110px">${head("POINT", "이래서 다릅니다", "")}
+    ${(d.points || []).map((p, i) => `<div style="margin:0 60px 22px;background:${t.band};border-radius:28px;padding:44px 48px;display:flex;align-items:center;gap:36px">
+      <div style="flex:0 0 auto;font-size:64px;font-weight:900;color:${t.main};line-height:1;letter-spacing:-0.04em">${String(i + 1).padStart(2, "0")}</div>
+      <div><div style="font-size:34px;font-weight:800;line-height:1.3">${dx(p.title)}</div><div style="font-size:23px;color:#5c5c5c;margin-top:10px;line-height:1.55">${dx(p.desc)}</div></div></div>`).join("")}</section>`)
+  // 4. 근거(측정값)
+  const pr = d.proof
+  if (pr && pr.value) out.push(`<section style="${W}background:${t.band};padding-bottom:110px">${head("CHECK", dx(pr.label || "측정 예시"), "")}
+    ${pr.photo ? `<div style="margin:0 90px;border-radius:32px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.14)"><img src="${proxied(pr.photo)}" style="display:block;width:600px;height:640px;object-fit:cover"></div>` : ""}
+    <div style="text-align:center;margin-top:${pr.photo ? 64 : 0}px">
+      <div style="font-size:150px;font-weight:900;color:${t.main};line-height:1;letter-spacing:-0.05em">${dx(pr.value)}<span style="font-size:52px;letter-spacing:0;margin-left:8px">${dx(pr.unit)}</span></div>
+      <div style="width:60px;height:3px;background:${t.ink};opacity:.15;margin:36px auto"></div>
+      <div style="font-size:21px;color:#777;line-height:1.6;padding:0 80px">${dx(pr.note)}</div></div></section>`)
+  // 5. 스토리
+  const st = d.story
+  if (st && (st.title || st.text)) out.push(`<section style="${W}background:${t.deep};color:#fff;text-align:center;padding:110px 70px">
+    <div style="display:inline-block;border:2px solid ${t.main};color:${t.main};font-size:20px;font-weight:800;padding:10px 26px;border-radius:999px;letter-spacing:1px">${dx(st.label)}</div>
+    <div style="font-size:50px;font-weight:900;line-height:1.3;margin-top:34px">${dx(st.title)}</div>
+    <div style="font-size:25px;line-height:1.7;opacity:.8;margin-top:24px">${dx(st.text)}</div></section>`)
+  // 6. 사진 (한 장씩 별도 섹션)
+  ;(d.gallery || []).forEach((g, i) => out.push(`<section style="${W}background:#fff;padding:${i ? 40 : 110}px 0 ${i === d.gallery.length - 1 ? 110 : 40}px">
+    ${i === 0 ? `<div style="text-align:center;padding:0 60px 56px">${label("DETAIL")}<div style="font-size:46px;font-weight:900;margin-top:18px">눈으로 확인하세요</div></div>` : ""}
+    <div style="margin:0 40px;border-radius:28px;overflow:hidden"><img src="${proxied(g.photo)}" style="display:block;width:700px"></div>
+    ${g.title || g.caption ? `<div style="text-align:center;padding:30px 70px 0">${g.title ? `<div style="font-size:30px;font-weight:800">${dx(g.title)}</div>` : ""}${g.caption ? `<div style="font-size:22px;color:#6b6b6b;margin-top:10px;line-height:1.55">${dx(g.caption)}</div>` : ""}</div>` : ""}</section>`))
+  // 7. 옵션
+  if ((d.options || []).length) out.push(`<section style="${W}background:${t.band};padding-bottom:110px">${head("OPTION", "구성 안내", "표기된 중량은 상자를 포함한 무게입니다")}
+    <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;padding:0 50px">
+    ${d.options.map((o, i) => `<div style="flex:0 0 ${d.options.length >= 3 ? 210 : 320}px;background:#fff;border-radius:28px;padding:44px 20px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.06);border-top:8px solid ${i === d.options.length - 1 ? t.main : t.soft}">
+      <div style="font-size:48px;font-weight:900;letter-spacing:-0.04em">${dx(o.name)}</div>
+      <div style="width:28px;height:3px;background:${t.main};margin:18px auto"></div>
+      <div style="font-size:21px;color:#555;line-height:1.55">${dx(o.fit)}</div></div>`).join("")}</div></section>`)
+  // 8. 가이드
+  if ((d.guide || []).length) out.push(`<section style="${W}background:#fff;padding-bottom:110px">${head("GUIDE", "맛있게 드시는 법", "받으신 순간부터 이렇게 해 주세요")}
+    ${d.guide.map((g, i) => `<div style="margin:0 60px;padding:36px 0;border-top:${i ? "1px solid #ececec" : `3px solid ${t.ink}`};display:flex;gap:32px">
+      <div style="flex:0 0 150px;font-size:26px;font-weight:900;color:${t.main};line-height:1.4">${dx(g.label)}</div>
+      <div style="font-size:24px;line-height:1.65;color:#333">${dx(g.text)}</div></div>`).join("")}</section>`)
+  // 9. 배송
+  if ((d.shipping || []).length) out.push(`<section style="${W}background:${t.band};padding-bottom:110px">${head("DELIVERY", "배송 · 교환 · 반품", "")}
+    <div style="margin:0 60px;background:#fff;border-radius:28px;padding:16px 44px">
+    ${d.shipping.map((g, i) => `<div style="padding:30px 0;${i ? "border-top:1px solid #efefef;" : ""}display:flex;gap:28px">
+      <div style="flex:0 0 150px;font-size:23px;font-weight:800;color:${t.ink}">${dx(g.label)}</div>
+      <div style="font-size:23px;line-height:1.6;color:#444">${dx(g.text)}</div></div>`).join("")}</div></section>`)
+  // 10. 꼭 읽어 주세요
+  if ((d.notice || []).length) out.push(`<section style="${W}background:#fff;padding:90px 60px">
+    <div style="background:#F6F6F4;border-radius:28px;padding:48px 52px">
+      <div style="font-size:28px;font-weight:900">꼭 읽어 주세요</div>
+      ${d.notice.map(n => `<div style="font-size:21px;line-height:1.65;color:#5a5a5a;margin-top:16px;padding-left:22px;position:relative"><span style="position:absolute;left:0;color:${t.main}">·</span>${dx(n)}</div>`).join("")}
+    </div></section>`)
+  // 11. 브랜드
+  if (d.brand && d.brand.name) out.push(`<section style="${W}background:${t.deep};color:#fff;text-align:center;padding:120px 70px">
+    <div style="font-size:16px;letter-spacing:6px;color:${t.main};font-weight:800">SELLER</div>
+    <div style="font-size:54px;font-weight:900;letter-spacing:4px;margin-top:20px">${dx(d.brand.name)}</div>
+    <div style="width:40px;height:3px;background:${t.main};margin:30px auto"></div>
+    <div style="font-size:24px;line-height:1.7;opacity:.8">${dx(d.brand.text)}</div></section>`)
+  return out
+}
+function designText(d) {
+  return [d.title, d.hero?.eyebrow, d.hero?.headline, d.hero?.sub, d.intro, ...(d.points || []).flatMap(p => [p.title, p.desc]), d.proof && `${d.proof.label} ${d.proof.value} ${d.proof.unit} ${d.proof.note}`, d.story && `${d.story.title} ${d.story.text}`, ...(d.gallery || []).flatMap(g => [g.title, g.caption]), ...(d.options || []).flatMap(o => [o.name, o.fit]), ...(d.guide || []).map(g => g.text), ...(d.shipping || []).map(g => g.label + " " + g.text), ...(d.notice || []), d.brand?.text].filter(Boolean).join(" ")
+}
+let _h2i = null
+function loadH2I() {
+  if (window.htmlToImage) return Promise.resolve()
+  if (_h2i) return _h2i
+  _h2i = new Promise((ok, no) => { const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"; s.onload = ok; s.onerror = () => no(new Error("이미지 변환 도구를 불러오지 못했습니다.")); document.head.appendChild(s) })
+  return _h2i
+}
+async function renderDesign(d, themeKey, onStep) {
+  await loadH2I()
+  await document.fonts.ready
+  const host = document.createElement("div")
+  host.style.cssText = "position:fixed;left:-10000px;top:0;width:780px;background:#fff;z-index:-1"
+  host.innerHTML = designSections(d, themeKey).join("")
+  document.body.appendChild(host)
+  try {
+    await Promise.all([...host.querySelectorAll("img")].map(im => im.complete && im.naturalWidth ? 0 : new Promise(r => { im.onload = r; im.onerror = () => { im.remove(); r() } })))
+    const fontCSS = await htmlToImage.getFontEmbedCSS(host).catch(() => "")
+    const out = []
+    const secs = [...host.children]
+    for (let i = 0; i < secs.length; i++) {
+      onStep && onStep(`이미지 만드는 중 ${i + 1}/${secs.length}`)
+      const dataUrl = await htmlToImage.toJpeg(secs[i], { quality: 0.9, pixelRatio: 1, backgroundColor: "#ffffff", fontEmbedCSS: fontCSS, cacheBust: false })
+      out.push(dataUrl)
+    }
+    return out
+  } finally { host.remove() }
+}
+
 async function openCpEdit(spid) {
   const p = (CPP.products || []).find(x => x.sellerProductId === spid); if (!p) return
   const box = $(`.card[data-spid="${spid}"] .cpeditbox`)
@@ -390,7 +510,8 @@ async function openCpEdit(spid) {
     <textarea class="e_notes" rows="3" placeholder="사실만 적으세요. 예: 제주 유라귤(엘로향). TV 방송 출연 농가. 당도계 측정 예시 16.6 Brix(1개 측정). 2kg·3kg·5kg 박스."></textarea>
     <label style="font-weight:400;margin:6px 0"><input type="checkbox" class="e_gen" checked style="width:auto"> 실제 사진으로 부족한 컷만 AI 연출 사진 만들기 <span class="note">(최대 2장 · 자동 검수 통과분만 · OpenAI 사용료 발생 · 네이버 신선식품엔 쓰지 말 것)</span></label>
     <label style="margin-top:8px">디자인 테마 <select class="e_theme" style="width:auto;margin-left:6px"><option value="citrus">감귤 오렌지</option><option value="premium">프리미엄 다크(선물용)</option><option value="fresh">싱그러운 그린</option><option value="berry">레드 베리(석류·딸기)</option><option value="clean">깔끔 화이트</option></select></label>
-    <div class="row" style="margin:8px 0"><button class="btn accent e_ai">③ AI 전문가 상세페이지 만들기</button><span class="note e_aist"></span></div>
+    <div class="row" style="margin:8px 0"><button class="btn accent e_design">③ 디자이너 이미지형 상세페이지 만들기 (추천)</button><span class="note e_dst"></span></div>
+    <div class="row" style="margin:4px 0 8px"><button class="btn small e_ai">글자형(HTML) 상세페이지로 만들기</button><span class="note e_aist"></span></div>
     <div class="e_report"></div>
     <label>노출상품명 <span class="note">(100자 이내)</span><input class="e_title" value="${esc(p.displayProductName || p.sellerProductName)}"></label>
     <label>검색어 <span class="note">(쉼표로 구분, 최대 20개·각 20자)</span><textarea class="e_tags" rows="2">${esc((p.searchTags || []).join(", "))}</textarea></label>
@@ -407,7 +528,7 @@ async function openCpEdit(spid) {
     $(".e_tagcheck", box).textContent = `${t.length}/20개` + (t.length > 20 ? " · 20개 초과분은 잘립니다" : "") + (long.length ? ` · 20자 초과: ${long.join(", ")}` : "") + (dup.length ? ` · 중복: ${dup.join(", ")}` : "")
   }
   const runCheck = () => {
-    const c = checkListing({ title: $(".e_title", box).value.trim(), tags: $(".e_tags", box).value.split(",").map(x => x.trim()).filter(Boolean), html: $(".e_html", box).value, notes: $(".e_notes", box).value + " " + extras.map(e => e.caption).join(" ") })
+    const c = checkListing({ title: $(".e_title", box).value.trim(), tags: $(".e_tags", box).value.split(",").map(x => x.trim()).filter(Boolean), html: box._images ? "<p>" + esc(box._designText || "") + "</p>" : $(".e_html", box).value, notes: $(".e_notes", box).value + " " + extras.map(e => e.caption).join(" ") })
     $(".e_check", box).innerHTML = `<div style="border-radius:8px;padding:10px 12px;margin:10px 0;font-size:14px;background:${c.errors.length ? "#fef2f2" : c.warns.length ? "#fff7ed" : "#f0fdf4"};border:1px solid ${c.errors.length ? "#fecaca" : c.warns.length ? "#fed7aa" : "#bbf7d0"}"><strong>등록 전 자동 점검</strong> ${c.errors.length ? `— 고쳐야 저장됩니다` : c.warns.length ? "— 확인 권장" : "— 문제 없음 ✅"}${c.errors.map(x => `<div>❌ ${esc(x)}</div>`).join("")}${c.warns.map(x => `<div>⚠ ${esc(x)}</div>`).join("")}</div>`
     return c
   }
@@ -431,7 +552,7 @@ async function openCpEdit(spid) {
 받으시면 바로 상자를 열어 상태를 확인해 주세요.`
   $(".e_toggle", box).onclick = () => $(".e_html", box).classList.toggle("hidden")
   $(".e_title", box).oninput = runCheck
-  $(".e_tags", box).oninput = tagCheck; $(".e_html", box).oninput = prev; tagCheck(); prev(); drawExtras()
+  $(".e_tags", box).oninput = tagCheck; $(".e_html", box).oninput = () => { box._images = null; prev() }; tagCheck(); prev(); drawExtras()
   $(".e_imgadd", box).onclick = async () => {
     const f = $(".e_img", box).files[0]; if (!f) return toast("사진을 먼저 고르세요.")
     const st = $(".e_imgst", box); st.textContent = "올리는 중…"
@@ -442,6 +563,42 @@ async function openCpEdit(spid) {
       $(".e_img", box).value = ""; $(".e_cap", box).value = ""
       st.textContent = "추가됐습니다. 이제 ③ 버튼을 누르면 상세페이지에 들어갑니다."
     } catch (err) { st.textContent = "실패: " + err.message }
+  }
+  $(".e_design", box).onclick = async () => {
+    const st = $(".e_dst", box); st.textContent = "사진 분석·글 작성 중… (1~2분)"; $(".e_report", box).innerHTML = ""
+    const btn = $(".e_design", box); btn.disabled = true
+    try {
+      const images = $$(".e_use", box).filter(c => c.checked).map(c => c.dataset.u)
+      const brand = $(".e_brand", box).value.trim(), shipping = $(".e_ship", box).value.trim(), facts = $(".e_facts", box).value.trim(), fruitGuide = $(".e_guide", box).value.trim()
+      api("coupang/copy", { method: "PUT", body: JSON.stringify({ brand, shipping, facts, guide: { id: spid, text: fruitGuide } }) }).catch(() => {})
+      await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "design", sellerProductId: spid, notes: $(".e_notes", box).value, images, extras, brand, shipping, facts, fruitGuide }) })
+      const t0 = Date.now()
+      let r = {}
+      while (true) {
+        await new Promise(ok => setTimeout(ok, 4000))
+        r = await api("coupang/design/" + spid).catch(() => ({}))
+        if (!r.running && r.at && new Date(r.at).getTime() >= t0 - 5000) break
+        if (Date.now() - t0 > 300000) throw new Error("시간 초과. 다시 시도하세요.")
+      }
+      if (r.error) throw new Error(r.error)
+      const d = r.design
+      const theme = $(".e_theme", box).value
+      const shots = await renderDesign(d, theme, m => st.textContent = m)
+      const urls = []
+      for (let i = 0; i < shots.length; i++) {
+        st.textContent = `이미지 올리는 중 ${i + 1}/${shots.length}`
+        const blob = await (await fetch(shots[i])).blob()
+        const fd = new FormData(); fd.append("file", blob, `detail-${i + 1}.jpg`)
+        urls.push((await api("coupang/images", { method: "POST", body: fd })).url)
+      }
+      box._images = urls; box._designText = designText(d)
+      $(".e_title", box).value = d.title || $(".e_title", box).value
+      if (d.tags?.length) $(".e_tags", box).value = d.tags.join(", ")
+      $(".e_html", box).value = urls.map(u => `<img src="${u}" style="width:100%;display:block">`).join("")
+      $(".e_report", box).innerHTML = (r.warnings || []).map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("") + (d.analysis ? `<div style="background:#f0f7ff;border:1px solid #cfe2ff;border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0;white-space:pre-wrap"><strong>AI 사진 분석</strong>\n${esc(d.analysis)}</div>` : "")
+      tagCheck(); prev()
+      st.textContent = `완성 — 이미지 ${urls.length}장. 테마를 바꾸고 다시 누르면 다른 색으로 만들어집니다.`
+    } catch (err) { st.textContent = "실패: " + err.message } finally { btn.disabled = false }
   }
   $(".e_ai", box).onclick = async () => {
     const gen = $(".e_gen", box).checked
@@ -457,7 +614,7 @@ async function openCpEdit(spid) {
       if (r.error) { st.textContent = "실패: " + r.error; return }
       $(".e_title", box).value = r.title || $(".e_title", box).value
       if (r.tags?.length) $(".e_tags", box).value = r.tags.join(", ")
-      $(".e_html", box).value = r.html || ""
+      $(".e_html", box).value = r.html || ""; box._images = null
       const shotHtml = (r.shots || []).length ? `<div style="background:#fafaf5;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0"><strong>AI 연출 사진 검수</strong>${(r.shots || []).map(s => `<div class="row" style="margin-top:8px;align-items:flex-start">${s.ok ? `<img src="${esc(s.url)}" style="width:72px;height:72px;object-fit:cover;border-radius:6px">` : ""}<div style="flex:1">${s.ok ? "✅ 사용" : "❌ 제외"} · ${esc(s.what)}${s.ok ? ` · ${s.score}/10` : ""}<br><span class="note">${esc(s.why || "")}</span>${(s.tries || []).map((t, i) => `<br><span class="note">시도 ${i + 1}: ${t.score}/10 ${t.pass ? "통과" : "탈락"} — ${esc(t.reasons)}</span>`).join("")}${s.error ? `<br><span class="note">오류: ${esc(s.error)}</span>` : ""}</div></div>`).join("")}</div>` : ""
       $(".e_report", box).innerHTML = (r.warnings || []).map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("") + shotHtml + (r.analysis ?`<div style="background:#f0f7ff;border:1px solid #cfe2ff;border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0;white-space:pre-wrap"><strong>AI 사진 분석</strong>\n${esc(r.analysis)}</div>` : "")
       tagCheck(); prev(); st.textContent = "완성 — 미리보기를 확인하세요. 마음에 안 들면 메모를 고쳐 다시 누르면 됩니다."
@@ -472,7 +629,7 @@ async function openCpEdit(spid) {
     if (!confirm("쿠팡에 수정 요청할까요? 승인 심사 후 반영되며, 그동안 기존 내용이 노출됩니다. 배송·반품 정보는 그대로 둡니다.")) return
     e.target.disabled = true
     try {
-      const r = await api("coupang/products/" + spid, { method: "PUT", body: JSON.stringify({ displayProductName: $(".e_title", box).value.trim(), searchTags: tags, detailHtml: $(".e_html", box).value.trim() }) })
+      const r = await api("coupang/products/" + spid, { method: "PUT", body: JSON.stringify({ displayProductName: $(".e_title", box).value.trim(), searchTags: tags, detailHtml: $(".e_html", box).value.trim(), detailImages: box._images || undefined }) })
       toast(r.note || "수정 요청 완료")
     } catch (err) { toast(err.message) } finally { e.target.disabled = false }
   }

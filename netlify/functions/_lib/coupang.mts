@@ -278,13 +278,14 @@ export async function resumeSale(vendorItemId: string) {
 }
 
 // 배송·반품 정보는 손대지 않고, 상품명·검색어·상세페이지만 바꿔서 승인 요청
-export async function updateProductContent(sellerProductId: string, change: { displayProductName?: string; sellerProductName?: string; searchTags?: string[]; detailHtml?: string }) {
+export async function updateProductContent(sellerProductId: string, change: { displayProductName?: string; sellerProductName?: string; searchTags?: string[]; detailHtml?: string; detailImages?: string[] }) {
   const p = await getProduct(sellerProductId)
   if (change.displayProductName) p.displayProductName = change.displayProductName.slice(0, 100)
   if (change.sellerProductName) p.sellerProductName = change.sellerProductName.slice(0, 100)
   for (const it of p.items || []) {
     if (change.searchTags) it.searchTags = cleanTags(change.searchTags)
-    if (change.detailHtml) it.contents = [{ contentsType: "HTML", contentDetails: [{ content: change.detailHtml, detailType: "TEXT" }] }]
+    if (change.detailImages?.length) it.contents = change.detailImages.map((u) => ({ contentsType: "IMAGE_NO_SPACE", contentDetails: [{ content: u, detailType: "IMAGE" }] }))
+    else if (change.detailHtml) it.contents = [{ contentsType: "HTML", contentDetails: [{ content: change.detailHtml, detailType: "TEXT" }] }]
   }
   p.requested = true
   return call("PUT", `${SP}/seller-products`, "", p)

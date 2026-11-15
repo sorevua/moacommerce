@@ -389,9 +389,121 @@ async function aiDetail(job: any) {
   }
 }
 
+// ================= 이미지형(디자이너) 상세페이지: AI는 내용(JSON)만, 디자인은 고정 템플릿 =================
+const DESIGN_SYSTEM = `당신은 한국 오픈마켓 신선식품 상세페이지 기획자입니다. 디자인은 정해진 틀이 하고, 당신은 틀에 들어갈 "내용"만 JSON으로 만듭니다.
+입력: 상품 정보, 판매자 메모, 공통 사실, 과일 정보, 배송반품안내, 판매자소개, 번호가 붙은 실제 사진.
+
+[사진 판단]
+- 사진을 직접 보고 무엇인지, 사진 속 글자·숫자를 읽는다.
+- 메모와 다른 수치(예: 13브릭스)가 박힌 사진, 흐린 사진, 중복, 무관한 사진은 쓰지 않고 analysis에 이유를 적는다.
+- 판매자가 추가한 사진은 반드시 쓴다(설명이 있으면 그 설명을 caption이나 note에 살린다).
+- hero.photo는 가장 먹음직스럽고 글자가 없는 깨끗한 사진.
+
+[글 규칙]
+- 사실 근거는 판매자메모·확인된공통사실·과일정보·배송반품안내·판매자소개·사진 설명뿐. 없는 수치·인증·수상·판매량·후기·순위 금지.
+- "최고","1위","100%","무조건", 효능·질병 표현 금지. 카톡·전화·외부 사이트·SNS 등 외부 채널 언급 금지. 가격 금지.
+- 판매자 메모의 지시가 최우선.
+- 짧고 쉬운 말. headline 14자 이내, 각 desc·text 40자 이내 한두 문장.
+- 측정 수치는 "측정 예시"로, note에 "1개 측정 · 과일마다 차이가 있습니다" 류의 안내를 붙인다.
+- shipping은 배송반품안내의 내용을 빠짐없이, 바꾸거나 더하지 말고 항목별로 나눈다.
+- guide는 과일정보에 있는 내용만, 항목별로 나눈다. 과일정보가 비면 빈 배열.
+
+[출력 — JSON 하나만, 다른 말 금지]
+{
+ "title": "노출상품명 50자 이내 (품목·산지·특징·중량, 메모에 없는 수치 금지)",
+ "tags": ["검색어 최대 20개, 각 20자 이내, 특수문자 없이"],
+ "analysis": "사진별 판단 한 줄씩 + 판매자가 확인할 점",
+ "hero": {"photo": 사진번호, "badge": "공통 사실에 산지직송이 있으면 '산지직송', 없으면 빈 문자열", "eyebrow": "작은 위 문구", "headline": "큰 제목", "highlight": "headline 안에서 색으로 강조할 단어(headline에 포함된 그대로)", "sub": "한 줄 설명"},
+ "intro": "첫 화면 아래 한두 문장 소개",
+ "points": [{"title": "포인트 제목(10자 이내)", "desc": "한 줄 설명"}],
+ "proof": null 또는 {"photo": 사진번호 또는 null, "label": "예: 비파괴 당도계 측정 예시", "value": "16.6", "unit": "Brix", "note": "측정 조건·개체 차이 안내"},
+ "story": null 또는 {"label": "예: TV 방송 출연 농가", "title": "짧은 제목", "text": "한두 문장"},
+ "gallery": [{"photo": 사진번호, "title": "짧은 제목", "caption": "한 줄 설명"}],
+ "options": [{"name": "옵션 이름(예: 2kg)", "fit": "이런 분께 (한 줄)"}],
+ "guide": [{"label": "예: 고르는 법 / 받으면 바로 / 보관 / 손질 / 드시는 법", "text": "내용"}],
+ "shipping": [{"label": "항목", "text": "내용"}],
+ "notice": ["꼭 읽어 주세요 항목"],
+ "brand": null 또는 {"name": "브랜드명", "text": "판매자소개 문장"}
+}
+points는 3개(근거 부족하면 2개), gallery는 쓸 수 있는 실제 사진 전부(hero·proof에 쓴 사진 제외, 최대 6장).`
+
+async function aiDesign(job: any) {
+  const key = `design-${job.sellerProductId}`
+  await store().setJSON(key, { running: true, startedAt: now() })
+  try {
+    if (!process.env.ANTHROPIC_BASE_URL && !process.env.ANTHROPIC_API_KEY)
+      throw new Error("Netlify AI Gateway가 켜져 있지 않습니다.")
+    const p = await getProduct(job.sellerProductId)
+    const c = extractContent(p)
+    const existing: string[] = (Array.isArray(job.images) ? job.images : c.images).filter((u: string) => c.images.includes(u)).slice(0, 10)
+    const extras: any[] = (Array.isArray(job.extras) ? job.extras : []).filter((e: any) => /^https:\/\/[^\s"'<>]+\/img\/[a-f0-9-]{36}\.jpg$/.test(String(e?.url || ""))).slice(0, 6)
+    const photos = [
+      ...extras.map((e) => ({ url: e.url, kind: "판매자가 추가한 사진(반드시 사용)", caption: String(e.caption || "") })),
+      ...existing.map((u) => ({ url: u, kind: "기존 등록 사진", caption: "" })),
+    ]
+    const info = {
+      현재상품명: p.displayProductName || p.sellerProductName,
+      옵션: (p.items || []).map((it: any) => it.itemName),
+      기존상세글: c.text,
+      판매자메모: job.notes || "",
+      배송반품안내: String(job.shipping || "").slice(0, 2000),
+      판매자소개: String(job.brand || "").slice(0, 1000),
+      확인된공통사실: String(job.facts || "").slice(0, 1000),
+      과일정보: String(job.fruitGuide || "").slice(0, 3000),
+    }
+    const inline: any[] = await Promise.all(
+      photos.map(async (ph) => {
+        try {
+          const r = await fetch(ph.url, { headers: { "user-agent": "Mozilla/5.0" } })
+          const type = (r.headers.get("content-type") || "").split(";")[0]
+          if (!r.ok || !/^image\/(jpeg|png|webp|gif)$/.test(type)) return null
+          const buf = Buffer.from(await r.arrayBuffer())
+          if (buf.byteLength > 4.5 * 1024 * 1024) return null
+          return { type: "base64", media_type: type, data: buf.toString("base64") }
+        } catch {
+          return null
+        }
+      }),
+    )
+    const content: any[] = [{ type: "text", text: "상품 정보:\n" + JSON.stringify(info, null, 1) }]
+    photos.forEach((ph, i) => {
+      content.push({ type: "text", text: `사진 ${i + 1} — ${ph.kind}${ph.caption ? ` / 설명: ${ph.caption}` : ""}` })
+      if (inline[i]) content.push({ type: "image", source: inline[i] })
+    })
+    content.push({ type: "text", text: "출력 형식의 JSON 하나만 쓰세요." })
+    const client = new Anthropic()
+    const msg: any = await client.messages.create({
+      model: process.env.AI_MODEL || "claude-sonnet-5-5",
+      max_tokens: 6000,
+      system: DESIGN_SYSTEM,
+      messages: [{ role: "user", content }],
+    })
+    const text = msg.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
+    const m = text.match(/\{[\s\S]*\}/)
+    if (!m) throw new Error("AI 응답을 읽지 못했습니다. 다시 시도해 주세요.")
+    const d = JSON.parse(m[0])
+    const ph = (n: any) => (Number.isInteger(Number(n)) && photos[Number(n) - 1] ? photos[Number(n) - 1].url : "")
+    if (d.hero) d.hero.photo = ph(d.hero.photo) || photos[0]?.url || ""
+    if (d.proof) d.proof.photo = ph(d.proof.photo)
+    d.gallery = (d.gallery || []).map((g: any) => ({ ...g, photo: ph(g.photo) })).filter((g: any) => g.photo)
+    // 추가한 사진이 빠졌으면 갤러리에 넣는다
+    const used = new Set([d.hero?.photo, d.proof?.photo, ...d.gallery.map((g: any) => g.photo)])
+    const warnings: string[] = []
+    for (const e of extras) if (!used.has(e.url)) { d.gallery.unshift({ photo: e.url, title: "", caption: e.caption || "" }); warnings.push("추가한 사진이 빠져 있어 사진 목록 맨 앞에 넣었습니다.") }
+    if (inline.some((x) => !x)) warnings.push("일부 사진은 AI가 직접 보지 못했습니다. 사진 속 문구를 직접 확인하세요.")
+    const source = JSON.stringify(info) + extras.map((e) => e.caption).join(" ")
+    for (const mm of JSON.stringify(d).matchAll(/(\d+(?:\.\d+)?)\s*(?:brix|브릭스)/gi)) if (!source.includes(mm[1])) warnings.push(`메모에 없는 당도 ${mm[1]}가 있습니다. 확인하세요.`)
+    if (d.proof?.value && !source.includes(String(d.proof.value))) { warnings.push(`근거 없는 측정값 ${d.proof.value}를 뺐습니다.`); d.proof = null }
+    await store().setJSON(key, { running: false, at: now(), design: d, warnings: [...new Set(warnings)] })
+  } catch (e: any) {
+    await store().setJSON(key, { running: false, at: now(), error: String(e?.message || e) })
+  }
+}
+
 export default async (req: Request) => {
   if (!isLoggedIn(req)) return
   const job = await req.json().catch(() => ({}))
   if (job.type === "refresh") await refreshProducts()
+  if (job.type === "design" && job.sellerProductId) await aiDesign(job)
   if (job.type === "ai" && job.sellerProductId) await aiDetail({ ...job, origin: new URL(req.url).origin })
 }

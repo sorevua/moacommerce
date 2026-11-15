@@ -304,6 +304,19 @@ export default async (req: Request, context: Context) => {
         return json({ ok: failed.length === 0, acknowledged: okBoxes.size, failed })
       }
 
+      if (id === "design" && sub && method === "GET") {
+        return json((await settingsStore().get(`design-${sub}`, { type: "json" })) || {})
+      }
+      // 이미지 렌더링용 사진 중계 (쿠팡 CDN·우리 사진만)
+      if (id === "proxy" && method === "GET") {
+        const u = url.searchParams.get("u") || ""
+        let host = ""
+        try { host = new URL(u).hostname } catch {}
+        if (!/(^|\.)coupangcdn\.com$/.test(host) && host !== url.hostname) return json({ error: "허용되지 않은 주소" }, 400)
+        const r = await fetch(u, { headers: { "user-agent": "Mozilla/5.0" } })
+        if (!r.ok) return json({ error: "사진을 가져오지 못했습니다." }, 502)
+        return new Response(await r.arrayBuffer(), { headers: { "content-type": r.headers.get("content-type") || "image/jpeg", "cache-control": "private, max-age=3600" } })
+      }
       // ----- 상세페이지용 공개 사진 -----
       if (id === "images" && method === "POST") {
         const form = await req.formData()
@@ -370,7 +383,11 @@ export default async (req: Request, context: Context) => {
         const change: any = {}
         if (body.displayProductName) change.displayProductName = String(body.displayProductName)
         if (Array.isArray(body.searchTags)) change.searchTags = cleanTags(body.searchTags)
-        if (body.detailHtml) change.detailHtml = sanitizeHtml(String(body.detailHtml))
+        if (Array.isArray(body.detailImages) && body.detailImages.length) {
+          const imgs = body.detailImages.map(String).filter((u: string) => /^https:\/\/[^\s"'<>]+\/img\/[a-f0-9-]{36}\.jpg$/.test(u)).slice(0, 40)
+          if (!imgs.length) return json({ error: "상세 이미지 주소가 올바르지 않습니다." }, 400)
+          change.detailImages = imgs
+        } else if (body.detailHtml) change.detailHtml = sanitizeHtml(String(body.detailHtml))
         if (!Object.keys(change).length) return json({ error: "바꿀 내용이 없습니다." }, 400)
         const r = await updateProductContent(String(sub), change)
         await logChange({ sellerProductId: sub, action: "content", fields: Object.keys(change) })
