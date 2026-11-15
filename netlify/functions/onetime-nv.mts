@@ -33,6 +33,25 @@ export default async (req: Request) => {
         try { r[path] = await ncall(m, path, "", body) ; break } catch (e: any) { r[path] = String(e?.message || e).slice(0, 300) }
       }
     }
+    else if (q === "map") {
+      const { getStore } = await import("@netlify/blobs")
+      const V = getStore({ name: "admin-vendors", consistency: "strong" })
+      const plan: Record<string, string[]> = { "jeju-dameun": ["13814609094", "13814609279"], "gwangyang-kiwi": ["13814619964", "13814620214"] }
+      r = {}
+      for (const [vid, nos] of Object.entries(plan)) {
+        const v: any = await V.get(vid, { type: "json" }); if (!v) { r[vid] = "업체 없음"; continue }
+        const combos: any[] = []
+        for (const no of nos) { const o: any = await ncall("GET", `/v2/products/origin-products/${no}`); for (const c of o?.originProduct?.detailAttribute?.optionInfo?.optionCombinations || []) combos.push({ id: String(c.id), name: c.optionName1, price: o.originProduct.salePrice + Number(c.price) }) }
+        const done: any[] = []
+        for (const p of v.products || []) {
+          const kg = (String(p.name).match(/\d+kg/i) || [""])[0].toLowerCase()
+          const hit = combos.find((c) => c.name === p.name) || (vid === "jeju-dameun" ? combos.find((c) => String(c.name).toLowerCase().includes(kg)) : null)
+          if (hit) { p.naverItemId = hit.id; done.push([p.name, hit.name, hit.id, hit.price]) }
+        }
+        v.updatedAt = new Date().toISOString(); await V.setJSON(vid, v)
+        r[vid] = { done, combos }
+      }
+    }
     else r = { error: "q?" }
   } catch (e: any) { r = { error: String(e?.message || e) } }
   const s = JSON.stringify(r)
