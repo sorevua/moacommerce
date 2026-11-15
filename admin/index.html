@@ -716,7 +716,8 @@ async function openCpEdit(spid) {
       $(".e_report", box).innerHTML += v.error ? `<div class="warn">⚠ 글자 검사 실패: ${esc(v.error)} — 미리보기에서 글자를 직접 확인하세요.</div>`
         : `<div style="background:${bad.length ? "#fef2f2" : "#f0fdf4"};border:1px solid ${bad.length ? "#fecaca" : "#bbf7d0"};border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0"><strong>이미지 글자 검사</strong> ${bad.length ? `— 문제 ${bad.length}장 (다시 만들기 권장)` : `— ${(v.results || []).length}장 모두 이상 없음 ✅`}${bad.map(x => `<div>❌ 이미지 ${x.image}: ${esc((x.problems || []).join(" / "))}</div>`).join("")}</div>`
       runCheck()
-      st.textContent = `완성 — 이미지 ${urls.length}장. 테마를 바꾸고 다시 누르면 다른 색으로 만들어집니다.`
+      const optNames = (p.items || []).map(i => i.itemName).join(" · ")
+      st.textContent = `완성 — 이미지 ${urls.length}장, 위에서부터 순서대로 들어갑니다. 모든 옵션(${optNames})에 똑같이 적용됩니다.`
     } catch (err) { st.textContent = "실패: " + err.message } finally { btn.disabled = false }
   }
   $(".e_ai", box).onclick = async () => {
