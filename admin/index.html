@@ -58,6 +58,41 @@ pre{white-space:pre-wrap;background:#f6f5f1;border-radius:8px;padding:12px;font-
 #toast.show{opacity:1}
 .hidden{display:none!important}
 @media(max-width:640px){th.hide-m,td.hide-m{display:none}}
+
+/* ---- 쉬운 화면 ---- */
+body{font-size:16px}
+header{padding:12px 18px}
+nav{gap:6px;flex-wrap:wrap}
+nav button{padding:10px 14px;font-size:15px;border-radius:12px;display:flex;align-items:center;gap:6px}
+nav button .ic{font-size:18px}
+.card{border-radius:16px;padding:20px}
+.btn{border-radius:12px;padding:11px 18px}
+.btn.small{border-radius:10px}
+.big{font-size:17px;padding:14px 22px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.tile{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;cursor:pointer;text-align:left}
+.tile:hover{border-color:var(--ink)}
+.tile .n{font-size:34px;font-weight:900;letter-spacing:-.03em;line-height:1.1}
+.tile .t{font-size:14px;color:var(--mute);margin-top:4px;font-weight:600}
+.subnav{display:flex;gap:6px;margin-bottom:14px}
+.subnav button{border:1px solid var(--line);background:#fff;padding:10px 18px;border-radius:999px;font-weight:800;cursor:pointer}
+.subnav button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.ch{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.ch .nm{font-weight:800}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800}
+.pill.on{background:#dcfce7;color:#166534}.pill.off{background:#f3f4f6;color:#6b7280}
+.post{border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:12px;background:#fff}
+.post .body{white-space:pre-wrap;font-size:15px;line-height:1.75;max-height:420px;overflow:auto;background:#faf9f6;border-radius:10px;padding:14px;margin-top:10px}
+.post .body img{display:block;max-width:100%;border-radius:10px;margin:8px 0}
+@media(max-width:760px){
+  header nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);justify-content:space-around;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:10;gap:0;flex-wrap:nowrap}
+  nav button{flex-direction:column;gap:2px;font-size:11px;padding:6px 4px;flex:1}
+  nav button .ic{font-size:22px}
+  nav button.on{background:none;color:var(--accent)}
+  main{padding-bottom:110px}
+  .tiles{grid-template-columns:repeat(2,1fr)}
+  .tile{padding:14px}.tile .n{font-size:28px}
+}
 </style>
 </head>
 <body>
@@ -76,17 +111,37 @@ pre{white-space:pre-wrap;background:#f6f5f1;border-radius:8px;padding:12px;font-
   <header>
     <b>모아커머스 관리자</b>
     <nav>
-      <button data-tab="orders" class="on">주문·발주</button>
-      <button data-tab="vendors">업체·상품</button>
-      <button data-tab="coupang">쿠팡 상품</button>
-      <button data-tab="settings">설정</button>
+      <button data-tab="home" class="on"><span class="ic">🏠</span>홈</button>
+      <button data-tab="orders"><span class="ic">📦</span>주문</button>
+      <button data-tab="coupang"><span class="ic">🛒</span>상품</button>
+      <button data-tab="vendors"><span class="ic">🏪</span>업체</button>
+      <button data-tab="promo"><span class="ic">📣</span>홍보</button>
+      <button data-tab="research"><span class="ic">🔎</span>조사</button>
+      <button data-tab="settings"><span class="ic">⚙️</span>설정</button>
     </nav>
     <button class="btn small" id="logoutBtn">로그아웃</button>
   </header>
 
   <main>
+    <!-- 홈 -->
+    <section id="tab-home">
+      <div class="card">
+        <h2 style="font-size:24px">오늘 할 일</h2>
+        <div class="tiles" id="homeTiles"></div>
+      </div>
+      <div class="card">
+        <h2>바로 가기</h2>
+        <div class="row">
+          <button class="btn accent big" data-go="coupang">✨ 상세페이지 만들기</button>
+          <button class="btn dark big" data-go="promo">📣 홍보 글 쓰기</button>
+          <button class="btn big" data-go="orders">📦 주문 넣기</button>
+        </div>
+      </div>
+      <div class="card" id="homeTodo"></div>
+    </section>
+
     <!-- 주문·발주 -->
-    <section id="tab-orders">
+    <section id="tab-orders" class="hidden">
       <div class="card" id="todayCard"></div>
       <div class="card">
         <h2>수동 주문 입력 (카톡·밴드 등)</h2>
@@ -130,6 +185,19 @@ pre{white-space:pre-wrap;background:#f6f5f1;border-radius:8px;padding:12px;font-
 
     <!-- 쿠팡 상품 -->
     <section id="tab-coupang" class="hidden">
+      <div class="subnav"><button class="on" data-pp="coupang">쿠팡</button><button data-pp="naver">네이버</button></div>
+      <div id="pp-naver" class="hidden">
+        <div class="card">
+          <h2>네이버 스마트스토어</h2>
+          <div class="warn">아직 연결 전입니다. 아래 3단계를 해 주시면 쿠팡과 똑같이 여기서 가격·판매중지·상세페이지를 관리할 수 있게 만들어 드립니다.</div>
+          <ol style="padding-left:20px;line-height:2">
+            <li><b>커머스API센터</b>(apicenter.commerce.naver.com) → 애플리케이션 등록</li>
+            <li>API 호출 IP에 <b>54.75.157.176, 54.78.149.203, 52.18.144.195</b> 3개 입력</li>
+            <li>받은 <b>애플리케이션 ID·시크릿</b>을 Netlify 환경변수 NAVER_CLIENT_ID, NAVER_CLIENT_SECRET에 넣기 (채팅창에 붙여넣지 마세요)</li>
+          </ol>
+        </div>
+      </div>
+      <div id="pp-coupang">
       <div class="card">
         <h2>쿠팡 등록 상품</h2>
         <p class="note">가격 변경·판매중지·재개는 바로 반영됩니다. 상품명·검색어·상세페이지 수정은 쿠팡 승인 후 반영되고, 배송·반품 정보는 건드리지 않습니다. 시즌이 끝나면 삭제하지 말고 [판매중지]만 누르세요.</p>
@@ -147,6 +215,62 @@ pre{white-space:pre-wrap;background:#f6f5f1;border-radius:8px;padding:12px;font-
         </div>
       </div>
       <div id="cpList"></div>
+      </div>
+    </section>
+
+    <!-- 홍보 -->
+    <section id="tab-promo" class="hidden">
+      <div class="card">
+        <h2 style="font-size:22px">📣 홍보 현황</h2>
+        <p class="note">하고 있는 홍보는 [시작]을 눌러 켜 두세요. 각 채널의 [글 쓰기]를 누르면 AI가 그 채널에 맞는 글을 써 줍니다. 비용은 AI 사용료(소액)뿐입니다.</p>
+        <div class="grid" id="promoChannels" style="margin-top:12px"></div>
+      </div>
+      <div class="card" id="promoWriter">
+        <h2 style="font-size:22px">✨ AI 홍보 글 쓰기</h2>
+        <div class="grid">
+          <div><label>어디에 올릴 글?</label><select id="pw_ch"></select></div>
+          <div><label>상품</label><input id="pw_prod" list="pw_prods" placeholder="예: 제주 유라귤 옐로향"><datalist id="pw_prods"></datalist></div>
+          <div><label>가격 (넣고 싶을 때만)</label><input id="pw_price" placeholder="예: 3kg 34,900원"></div>
+          <div><label>구매 링크 (쿠팡 등, 선택)</label><input id="pw_buy" placeholder="https://"></div>
+        </div>
+        <label style="margin-top:12px">상품 사실 (아는 것만 · 지어내지 않습니다)</label>
+        <textarea id="pw_facts" rows="3" placeholder="예: 제주 서귀포 하우스 재배. TV 방송 출연 농가. 당도계 측정 예시 16.6 Brix(1개 측정). 2·3·5kg."></textarea>
+        <label style="margin-top:12px">사진 (여러 장 선택 가능)</label>
+        <input type="file" id="pw_files" accept="image/*" multiple>
+        <div class="thumbs" id="pw_thumbs"></div>
+        <div class="row" style="margin-top:14px"><button class="btn accent big" id="pw_go">✨ 글 만들기</button><span class="note" id="pw_st"></span></div>
+        <p class="note" style="margin-top:8px">오픈채팅·카카오톡 주소는 아래 [내 홍보 주소]에 한 번만 넣어 두면 글에 자동으로 들어갑니다.</p>
+      </div>
+      <div class="card">
+        <div class="row"><h2 style="margin:0">쓴 글</h2><span class="spacer"></span><select id="pw_filter" style="width:auto"></select></div>
+        <div id="promoPosts"></div>
+      </div>
+      <div class="card">
+        <h2>내 홍보 주소</h2>
+        <div class="grid">
+          <div><label>카카오 오픈채팅 주소</label><input id="ps_openchat" placeholder="https://open.kakao.com/o/..."></div>
+          <div><label>카카오톡 채널 주소</label><input id="ps_kakao" placeholder="https://pf.kakao.com/..."></div>
+          <div><label>인스타그램 주소</label><input id="ps_instagram" placeholder="https://instagram.com/..."></div>
+          <div><label>네이버 블로그 주소</label><input id="ps_blog" placeholder="https://blog.naver.com/..."></div>
+          <div><label>밴드 주소</label><input id="ps_band" placeholder="https://band.us/..."></div>
+          <div><label>브랜드 이름</label><input id="ps_brand" placeholder="모아커머스"></div>
+        </div>
+        <div class="row" style="margin-top:12px"><button class="btn dark" id="ps_save">저장</button></div>
+        <div class="warn" style="margin-top:12px">⚠ 쿠팡·네이버 <b>상세페이지</b>에는 오픈채팅·카톡 주소를 넣으면 외부거래 유도로 제재받습니다. 이 주소들은 블로그·인스타·밴드·당근 같은 <b>내 채널</b> 글에만 들어갑니다.</div>
+      </div>
+    </section>
+
+    <!-- 조사 -->
+    <section id="tab-research" class="hidden">
+      <div class="card">
+        <h2 style="font-size:22px">🔎 공급처 조사</h2>
+        <p>AI가 <b>2시간마다</b> 제철 과일 공급처를 찾아 <b>공급처 시트</b>에 기록하고 있습니다. 업체에 연락은 하지 않고 기록만 합니다.</p>
+        <p class="note" style="margin-top:8px">시트는 Claude 앱의 내 파일에서 "공급처" 이름으로 열 수 있습니다.</p>
+      </div>
+      <div class="card">
+        <h2>B2B 상품 가져오기</h2>
+        <div class="warn">준비 중입니다. 쓰시는 B2B(도매) 사이트 이름을 알려 주시면, 그 사이트 상품을 여기로 가져와 공급가로 등록되게 만들겠습니다.</div>
+      </div>
     </section>
 
     <!-- 설정 -->
@@ -196,6 +320,8 @@ $("#logoutBtn").onclick = async () => { await fetch("/api/logout", { method: "PO
 
 // ---------- 탭 ----------
 $$("nav button").forEach(b => b.onclick = () => {
+  try { history.replaceState(null, "", "#" + b.dataset.tab) } catch {}
+  window.scrollTo(0, 0)
   $$("nav button").forEach(x => x.classList.toggle("on", x === b))
   $$("main > section").forEach(s => s.classList.toggle("hidden", s.id !== "tab-" + b.dataset.tab))
 })
@@ -209,6 +335,7 @@ async function loadAll() {
   renderVendorSelects(); renderVendors(); renderSettings(); renderCp()
   ORDERS = await api("orders"); renderOrders()
   await cpP
+  loadPromo()
 }
 
 
@@ -247,6 +374,7 @@ function cpVisible() {
   })
 }
 function renderCp() {
+  try { renderHome() } catch {}
   const list = cpVisible()
   $("#cpInfo").textContent = CPP.running ? "불러오는 중…" : CPP.error ? "오류: " + CPP.error : CPP.at ? `마지막 갱신 ${new Date(CPP.at).toLocaleString("ko-KR")} · ${list.length}/${(CPP.products || []).length}개 · 선택 ${cpSel.size}` : "아직 불러오지 않았습니다. [쿠팡에서 새로고침]을 누르세요."
   $("#cpList").innerHTML = list.map(p => {
@@ -1113,6 +1241,125 @@ async function openCpEdit(spid) {
       toast(r.note || "수정 요청 완료")
     } catch (err) { toast(err.message) } finally { e.target.disabled = false }
   }
+}
+
+// ---------- 탭 이동 도우미 ----------
+function goTab(name) { const b = $(`nav button[data-tab="${name}"]`); if (b) b.click() }
+document.addEventListener("click", e => { const g = e.target.closest("[data-go]"); if (g) goTab(g.dataset.go) })
+$$(".subnav button").forEach(b => b.onclick = () => {
+  $$(".subnav button").forEach(x => x.classList.toggle("on", x === b))
+  $("#pp-coupang").classList.toggle("hidden", b.dataset.pp !== "coupang"); $("#pp-naver").classList.toggle("hidden", b.dataset.pp !== "naver")
+})
+
+if (location.hash.length > 1) setTimeout(() => goTab(location.hash.slice(1)), 0)
+// ---------- 홈 ----------
+function renderHome() {
+  const os = ORDERS || [], items = (CPP.products || []).flatMap(p => p.items || [])
+  const newO = os.filter(o => o.status === "접수").length, poDone = os.filter(o => o.status === "발주완료" && !o.invoice).length
+  const onSale = items.filter(i => i.onSale).length, off = items.filter(i => i.onSale === false).length
+  const promoOn = Object.values(PROMO.status || {}).filter(x => x?.on).length
+  const notPosted = (PROMO.posts || []).filter(x => !x.postedAt).length
+  const tile = (n, t, go, color) => `<button class="tile" data-go="${go}"><div class="n" style="color:${color || "var(--ink)"}">${n}</div><div class="t">${t}</div></button>`
+  $("#homeTiles").innerHTML = tile(newO, "새 주문 (발주 필요)", "orders", newO ? "var(--accent)" : "") + tile(poDone, "송장 입력 기다림", "orders") + tile(onSale, "판매 중 옵션", "coupang", "var(--ok)") + tile(off, "판매중지 옵션", "coupang") + tile(promoOn, "진행 중인 홍보", "promo") + tile(notPosted, "아직 안 올린 홍보 글", "promo", notPosted ? "var(--warn)" : "")
+  const todo = []
+  if (newO) todo.push(`📦 새 주문 ${newO}건 → [주문]에서 발주서 보내기`)
+  if (poDone) todo.push(`🚚 송장번호 ${poDone}건 입력하기`)
+  if (!promoOn) todo.push("📣 홍보를 하나도 안 하고 있어요 → [홍보]에서 블로그 글부터 써 보세요")
+  if (notPosted) todo.push(`✍️ 만들어 둔 홍보 글 ${notPosted}개를 아직 안 올렸어요`)
+  if (off && !onSale) todo.push("🛒 판매 중인 상품이 없어요 → 상세페이지를 만들고 판매재개 하세요")
+  $("#homeTodo").innerHTML = `<h2>해야 할 일</h2>` + (todo.length ? todo.map(t => `<div style="padding:12px 0;border-bottom:1px solid var(--line);font-size:16px">${t}</div>`).join("") : `<div class="okbox">지금 할 일이 없어요 👍</div>`)
+}
+
+// ---------- 홍보 ----------
+const PCH = { naver_blog: "네이버 블로그", instagram: "인스타그램", threads: "스레드", karrot: "당근 비즈프로필", band: "밴드", openchat: "오픈채팅 공지" }
+const PCH_HOW = { naver_blog: "blog.naver.com → 글쓰기 → 제목·본문 붙여넣기 → 사진 넣기", instagram: "휴대폰 인스타 앱 → 새 게시물 → 사진 고르고 글 붙여넣기", threads: "스레드 앱 → 새 글", karrot: "당근 앱 → 비즈프로필 → 소식 쓰기", band: "밴드 앱 → 글쓰기", openchat: "오픈채팅방 → 공지 등록" }
+let PROMO = { settings: {}, status: {}, posts: [] }, pwPhotos = []
+async function api2(path, opts = {}) {
+  const res = await fetch("/api/promo/" + path, { credentials: "same-origin", ...opts, headers: { "content-type": "application/json" } })
+  if (res.status === 401) { showLogin(); throw new Error("로그인이 필요합니다.") }
+  const d = await res.json().catch(() => ({})); if (!res.ok) throw new Error(d.error || "요청 실패"); return d
+}
+async function loadPromo() {
+  const [settings, status, posts] = await Promise.all([api2("settings"), api2("status"), api2("posts")]).catch(() => [{}, {}, []])
+  PROMO = { settings, status, posts }
+  for (const k of ["openchat", "kakao", "instagram", "blog", "band", "brand"]) $("#ps_" + k).value = settings[k] || ""
+  renderPromo(); renderHome()
+}
+function renderPromo() {
+  $("#pw_ch").innerHTML = Object.entries(PCH).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")
+  $("#pw_filter").innerHTML = `<option value="">전체</option>` + Object.entries(PCH).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")
+  $("#pw_prods").innerHTML = (CPP.products || []).map(p => `<option value="${esc(p.displayProductName || p.sellerProductName)}">`).join("")
+  $("#promoChannels").innerHTML = Object.entries(PCH).map(([k, v]) => {
+    const s = PROMO.status[k] || {}, n = PROMO.posts.filter(x => x.channel === k), up = n.filter(x => x.postedAt).length
+    return `<div class="ch"><div style="flex:1"><div class="nm">${v} <span class="pill ${s.on ? "on" : "off"}">${s.on ? "진행 중" : "안 함"}</span></div>
+      <div class="note">글 ${n.length}개 · 올림 ${up}개${s.on && s.since ? ` · ${new Date(s.since).toLocaleDateString("ko-KR")}부터` : ""}</div></div>
+      <button class="btn small" data-pwrite="${k}">글 쓰기</button><button class="btn small ${s.on ? "" : "dark"}" data-ptoggle="${k}">${s.on ? "멈춤" : "시작"}</button></div>`
+  }).join("")
+  renderPosts()
+}
+function renderPosts() {
+  const f = $("#pw_filter").value, list = PROMO.posts.filter(x => !f || x.channel === f)
+  const bodyHtml = p => esc(p.body).replace(/\[사진(\d+)\]/g, (m, n) => p.photos[n - 1] ? `<img src="${esc(p.photos[n - 1])}">` : m)
+  $("#promoPosts").innerHTML = list.map(p => `<div class="post" data-pid="${p.id}">
+    <div class="row"><span class="pill ${p.postedAt ? "on" : "off"}">${p.postedAt ? "올림" : "안 올림"}</span><b>${esc(PCH[p.channel] || p.channel)}</b><span class="note">${new Date(p.at).toLocaleString("ko-KR")} · ${esc(p.product)}</span></div>
+    <div style="font-size:18px;font-weight:800;margin-top:8px">${esc(p.title)}</div>
+    <div class="body">${bodyHtml(p)}</div>
+    ${p.tags?.length ? `<div class="note" style="margin-top:8px">${p.tags.map(t => "#" + esc(t)).join(" ")}</div>` : ""}
+    <div class="row" style="margin-top:10px">
+      <button class="btn small" data-pcopy="title">제목 복사</button><button class="btn small dark" data-pcopy="body">본문 복사</button><button class="btn small" data-pcopy="tags">태그 복사</button>
+      ${p.photos.length ? `<button class="btn small" data-pphotos>사진 ${p.photos.length}장 받기</button>` : ""}
+      <span class="spacer"></span>
+      <button class="btn small ${p.postedAt ? "" : "accent"}" data-pposted>${p.postedAt ? "올림 취소" : "✅ 올렸어요"}</button>
+      <button class="btn small" data-pdel>삭제</button>
+    </div>
+    <div class="note" style="margin-top:6px">올리는 법: ${esc(PCH_HOW[p.channel] || "")}</div>
+  </div>`).join("") || `<p class="note" style="margin-top:10px">아직 쓴 글이 없어요. 위에서 [✨ 글 만들기]를 눌러 보세요.</p>`
+}
+async function copyText(t) { try { await navigator.clipboard.writeText(t); toast("복사했어요") } catch { prompt("복사해서 쓰세요", t) } }
+$("#pw_filter").onchange = renderPosts
+$("#promoChannels").addEventListener("click", async e => {
+  const w = e.target.closest("[data-pwrite]"), t = e.target.closest("[data-ptoggle]")
+  if (w) { $("#pw_ch").value = w.dataset.pwrite; $("#promoWriter").scrollIntoView({ behavior: "smooth" }) }
+  if (t) { const k = t.dataset.ptoggle; PROMO.status = await api2("status", { method: "PUT", body: JSON.stringify({ channel: k, on: !PROMO.status[k]?.on }) }); renderPromo(); renderHome() }
+})
+$("#promoPosts").addEventListener("click", async e => {
+  const box = e.target.closest(".post"); if (!box) return
+  const p = PROMO.posts.find(x => x.id === box.dataset.pid); if (!p) return
+  const c = e.target.closest("[data-pcopy]")
+  if (c) {
+    const k = c.dataset.pcopy
+    const linkify = t => t.replace(/\[사진(\d+)\]\n?/g, "")
+    return copyText(k === "title" ? p.title : k === "tags" ? p.tags.map(x => "#" + x).join(" ") : (p.channel === "naver_blog" ? p.body : linkify(p.body)))
+  }
+  if (e.target.closest("[data-pphotos]")) { p.photos.forEach((u, i) => { const a = document.createElement("a"); a.href = u; a.download = `사진${i + 1}.jpg`; a.target = "_blank"; document.body.appendChild(a); a.click(); a.remove() }); return toast("사진을 내려받았어요") }
+  if (e.target.closest("[data-pposted]")) { await api2("posts/" + p.id, { method: "PUT", body: JSON.stringify({ posted: !p.postedAt }) }); if (!p.postedAt && !PROMO.status[p.channel]?.on) await api2("status", { method: "PUT", body: JSON.stringify({ channel: p.channel, on: true }) }); return loadPromo() }
+  if (e.target.closest("[data-pdel]")) { if (!confirm("이 글을 지울까요?")) return; await api2("posts/" + p.id, { method: "DELETE" }); return loadPromo() }
+})
+$("#ps_save").onclick = async () => {
+  try { const b = {}; for (const k of ["openchat", "kakao", "instagram", "blog", "band", "brand"]) b[k] = $("#ps_" + k).value.trim(); PROMO.settings = await api2("settings", { method: "PUT", body: JSON.stringify(b) }); toast("저장했어요") } catch (err) { toast(err.message) }
+}
+$("#pw_files").onchange = async e => {
+  const files = [...e.target.files].slice(0, 10 - pwPhotos.length); if (!files.length) return
+  $("#pw_st").textContent = "사진 올리는 중…"
+  for (const f of files) { try { const fd = new FormData(); fd.append("file", await shrink(f, 1400), "p.jpg"); pwPhotos.push((await api("coupang/images", { method: "POST", body: fd })).url) } catch (err) { toast(err.message) } }
+  e.target.value = ""; $("#pw_st").textContent = ""; drawPw()
+}
+function drawPw() { $("#pw_thumbs").innerHTML = pwPhotos.map((u, i) => `<div class="thumb"><img src="${esc(u)}"><button data-pwdel="${i}">×</button></div>`).join("") }
+$("#pw_thumbs").onclick = e => { const b = e.target.closest("[data-pwdel]"); if (b) { pwPhotos.splice(Number(b.dataset.pwdel), 1); drawPw() } }
+$("#pw_go").onclick = async () => {
+  const b = $("#pw_go"), st = $("#pw_st")
+  if (!$("#pw_prod").value.trim()) return toast("상품 이름을 적어 주세요.")
+  b.disabled = true; st.textContent = "AI가 사진을 보고 글을 쓰는 중… (1~2분)"
+  try {
+    const { id } = await api2("newjob", { method: "POST", body: "{}" })
+    await fetch("/.netlify/functions/promo-write-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ jobId: id, channel: $("#pw_ch").value, product: $("#pw_prod").value.trim(), facts: $("#pw_facts").value.trim(), price: $("#pw_price").value.trim(), buyUrl: $("#pw_buy").value.trim(), photos: pwPhotos }) })
+    const t0 = Date.now(); let r = {}
+    while (Date.now() - t0 < 300000) { await new Promise(ok => setTimeout(ok, 4000)); r = await api2("job/" + id).catch(() => ({})); if (r.at && !r.running) break }
+    if (r.error) throw new Error(r.error)
+    if (!r.postId) throw new Error("시간 초과. 다시 눌러 주세요.")
+    st.textContent = "완성! 아래 [쓴 글]에서 복사해서 올리세요."; $("#pw_filter").value = ""
+    await loadPromo(); $("#promoPosts").scrollIntoView({ behavior: "smooth" })
+  } catch (err) { st.textContent = "실패: " + err.message } finally { b.disabled = false }
 }
 
 // ---------- 주문 ----------
