@@ -328,6 +328,7 @@ async function openCpEdit(spid) {
     </div>
     <h3 style="margin:14px 0 6px">② AI에게 알려줄 사실</h3>
     <textarea class="e_notes" rows="3" placeholder="사실만 적으세요. 예: 제주 유라귤(엘로향). TV 방송 출연 농가. 당도계 측정 예시 16.6 Brix(1개 측정). 2kg·3kg·5kg 박스."></textarea>
+    <label style="font-weight:400;margin:6px 0"><input type="checkbox" class="e_gen" checked style="width:auto"> 실제 사진으로 부족한 컷만 AI 연출 사진 만들기 <span class="note">(최대 2장 · 자동 검수 통과분만 · OpenAI 사용료 발생 · 네이버 신선식품엔 쓰지 말 것)</span></label>
     <div class="row" style="margin:8px 0"><button class="btn accent e_ai">③ AI 전문가 상세페이지 만들기</button><span class="note e_aist"></span></div>
     <div class="e_report"></div>
     <label>노출상품명 <span class="note">(100자 이내)</span><input class="e_title" value="${esc(p.displayProductName || p.sellerProductName)}"></label>
@@ -363,18 +364,20 @@ async function openCpEdit(spid) {
     } catch (err) { st.textContent = "실패: " + err.message }
   }
   $(".e_ai", box).onclick = async () => {
-    const st = $(".e_aist", box); st.textContent = "사진 분석·작성 중… (1~2분)"; $(".e_report", box).innerHTML = ""
+    const gen = $(".e_gen", box).checked
+    const st = $(".e_aist", box); st.textContent = gen ? "사진 분석·작성 중… 필요한 연출 사진을 만들고 검수하면 3~8분 걸립니다." : "사진 분석·작성 중… (1~2분)"; $(".e_report", box).innerHTML = ""
     const images = $$(".e_use", box).filter(c => c.checked).map(c => c.dataset.u)
-    await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "ai", sellerProductId: spid, notes: $(".e_notes", box).value, images, extras }) })
+    await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "ai", sellerProductId: spid, notes: $(".e_notes", box).value, images, extras, genImages: gen }) })
     const t0 = Date.now()
     const tick = async () => {
       const r = await api("coupang/ai/" + spid).catch(() => ({}))
-      if (r.running || !r.at || new Date(r.at).getTime() < t0 - 5000) { if (Date.now() - t0 < 300000) return setTimeout(tick, 4000); st.textContent = "시간 초과. 다시 시도하세요."; return }
+      if (r.running || !r.at || new Date(r.at).getTime() < t0 - 5000) { if (Date.now() - t0 < 900000) return setTimeout(tick, 5000); st.textContent = "시간 초과. 다시 시도하세요."; return }
       if (r.error) { st.textContent = "실패: " + r.error; return }
       $(".e_title", box).value = r.title || $(".e_title", box).value
       if (r.tags?.length) $(".e_tags", box).value = r.tags.join(", ")
       $(".e_html", box).value = r.html || ""
-      $(".e_report", box).innerHTML = (r.warnings || []).map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("") + (r.analysis ? `<div style="background:#f0f7ff;border:1px solid #cfe2ff;border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0;white-space:pre-wrap"><strong>AI 사진 분석</strong>\n${esc(r.analysis)}</div>` : "")
+      const shotHtml = (r.shots || []).length ? `<div style="background:#fafaf5;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0"><strong>AI 연출 사진 검수</strong>${(r.shots || []).map(s => `<div class="row" style="margin-top:8px;align-items:flex-start">${s.ok ? `<img src="${esc(s.url)}" style="width:72px;height:72px;object-fit:cover;border-radius:6px">` : ""}<div style="flex:1">${s.ok ? "✅ 사용" : "❌ 제외"} · ${esc(s.what)}${s.ok ? ` · ${s.score}/10` : ""}<br><span class="note">${esc(s.why || "")}</span>${(s.tries || []).map((t, i) => `<br><span class="note">시도 ${i + 1}: ${t.score}/10 ${t.pass ? "통과" : "탈락"} — ${esc(t.reasons)}</span>`).join("")}${s.error ? `<br><span class="note">오류: ${esc(s.error)}</span>` : ""}</div></div>`).join("")}</div>` : ""
+      $(".e_report", box).innerHTML = (r.warnings || []).map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("") + shotHtml + (r.analysis ?`<div style="background:#f0f7ff;border:1px solid #cfe2ff;border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0;white-space:pre-wrap"><strong>AI 사진 분석</strong>\n${esc(r.analysis)}</div>` : "")
       tagCheck(); prev(); st.textContent = "완성 — 미리보기를 확인하세요. 마음에 안 들면 메모를 고쳐 다시 누르면 됩니다."
     }
     setTimeout(tick, 6000)

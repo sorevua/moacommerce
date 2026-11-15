@@ -4,6 +4,7 @@ import { getStore } from "@netlify/blobs"
 import Anthropic from "@anthropic-ai/sdk"
 import { isLoggedIn } from "./_lib/auth.mts"
 import { listProducts, getProduct, getInventory, extractContent } from "./_lib/coupang.mts"
+import { imageGenConfigured, makeShots, type Shot, type ShotResult } from "./_lib/image-gen.mts"
 
 const store = () => getStore({ name: "admin-settings", consistency: "strong" })
 const now = () => new Date().toISOString()
@@ -99,8 +100,14 @@ const SYSTEM = `당신은 한국 오픈마켓(쿠팡) 신선식품 상세페이�
 - 배송·반품·가격은 쓰지 않는다.
 - 문장은 짧게. 초등학생도 이해할 쉬운 말. 한 문단 2문장 이내.
 
+[사진 원칙 — 실제 사진 위주]
+- 상세페이지는 실제 사진이 중심이다. 쓸 수 있는 실제 사진은 최대한 쓴다.
+- 실제 사진으로 채울 수 없는 꼭 필요한 컷(예: 과육 단면이 전혀 없음, 대표로 쓸 깔끔한 사진이 없음)만 AI 연출 사진을 요청한다. 최대 2장, 필요 없으면 요청하지 않는다.
+- 요청은 @@SHOTS 에 "기준사진번호 | 만들 사진 | 이유" 한 줄씩 쓴다. 기준 사진은 그 상품이 가장 잘 보이는 실제 사진 번호.
+- HTML에서 첫 번째 요청 사진 자리는 {{G1}}, 두 번째는 {{G2}} 로 쓴다.
+
 [HTML 규칙]
-- 이미지는 입력으로 받은 주소만 그대로 <img src>에 쓴다. 다른 주소 금지.
+- 이미지 주소를 직접 쓰지 않는다. 실제 사진 n번은 <img src="{{Pn}}"> 처럼 번호 표시만 쓴다(예: {{P1}}, {{P3}}). AI 연출 사진은 {{G1}}, {{G2}}. 다른 주소 금지.
 - div, h2, h3, p, ul, li, img, table, tr, td, th, strong, span, br 만 사용. 모든 스타일은 인라인 style. script/iframe/외부 CSS/웹폰트 금지.
 - 전체를 <div style="max-width:780px;margin:0 auto;font-family:sans-serif;color:#222;line-height:1.6"> 로 감싼다.
 - 모바일 기준: 본문 18px 이상, 섹션 제목 28px 이상 굵게, 이미지는 width:100%, 섹션 사이 여백 56px 이상, 가운데 정렬 위주.
@@ -116,6 +123,8 @@ const SYSTEM = `당신은 한국 오픈마켓(쿠팡) 신선식품 상세페이�
 검색어1, 검색어2, ...
 @@ANALYSIS
 사진별 판단을 한 줄씩 (예: "사진 3: 13브릭스 문구가 있어 제외"), 그리고 판매자가 확인해야 할 점
+@@SHOTS
+기준사진번호 | 만들 사진 | 이유   (필요 없으면 "없음")
 @@HTML
 상세페이지 HTML`
 
@@ -144,13 +153,33 @@ async function aiDetail(job: any) {
       기존상세글: c.text,
       판매자메모: job.notes || "",
     }
+    // 사진을 직접 받아 AI에게 보낸다 (쿠팡 CDN을 AI 쪽에서 못 읽는 경우 대비)
+    const inline: any[] = await Promise.all(
+      photos.map(async (ph) => {
+        try {
+          const r = await fetch(ph.url, { headers: { "user-agent": "Mozilla/5.0" } })
+          const type = (r.headers.get("content-type") || "").split(";")[0]
+          if (!r.ok || !/^image\/(jpeg|png|webp|gif)$/.test(type)) return null
+          const buf = Buffer.from(await r.arrayBuffer())
+          if (buf.byteLength > 4.5 * 1024 * 1024) return null
+          return { type: "base64", media_type: type, data: buf.toString("base64") }
+        } catch {
+          return null
+        }
+      }),
+    )
     const build = (withVision: boolean) => {
       const content: any[] = [{ type: "text", text: "상품 정보:\n" + JSON.stringify(info, null, 1) }]
       photos.forEach((ph, i) => {
-        content.push({ type: "text", text: `사진 ${i + 1} — ${ph.kind}${ph.caption ? ` / 설명: ${ph.caption}` : ""}\n주소: ${ph.url}` })
-        if (withVision) content.push({ type: "image", source: { type: "url", url: ph.url } })
+        content.push({ type: "text", text: `사진 ${i + 1} {{P${i + 1}}} — ${ph.kind}${ph.caption ? ` / 설명: ${ph.caption}` : ""}` })
+        if (withVision) content.push({ type: "image", source: inline[i] || { type: "url", url: ph.url } })
       })
-      content.push({ type: "text", text: "위 사진을 분석하고 출력 형식대로 작성하세요." })
+      content.push({
+        type: "text",
+        text: job.genImages === false || !imageGenConfigured()
+          ? "위 사진을 분석하고 출력 형식대로 작성하세요. 이번에는 AI 연출 사진을 만들 수 없으니 @@SHOTS 는 \"없음\"으로 쓰고 {{G1}}·{{G2}}는 쓰지 마세요."
+          : "위 사진을 분석하고 출력 형식대로 작성하세요.",
+      })
       return content
     }
     const client = new Anthropic()
@@ -171,25 +200,81 @@ async function aiDetail(job: any) {
     const text = msg.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
     let html = section(text, "HTML").replace(/^```html?\s*|\s*```$/g, "")
     if (!html) throw new Error("AI 응답을 읽지 못했습니다. 다시 시도해 주세요.")
-    // 허용한 사진 주소만 남긴다
-    const allowed = new Set(photos.map((ph) => ph.url))
+    const warnings: string[] = []
+
+    // 꼭 필요한 컷만 AI로 생성 → 자동 검수 통과분만 사용
+    let shots: ShotResult[] = []
+    const wanted: Shot[] = section(text, "SHOTS")
+      .split("\n")
+      .map((l: string) => l.split("|").map((x) => x.trim()))
+      .filter((a: string[]) => a.length >= 2 && /^\d+$/.test(a[0]))
+      .map((a: string[]) => ({ base: Number(a[0]), what: a[1], why: a[2] || "" }))
+      .slice(0, 2)
+    if (wanted.length && job.genImages !== false) {
+      if (!imageGenConfigured()) warnings.push("AI가 연출 사진이 필요하다고 판단했지만 OpenAI 키(OPENAI_API_KEY)가 없어 만들지 않았습니다.")
+      else shots = await makeShots(wanted, photos.map((p) => p.url), job.origin || "")
+    }
+
+    // 번호 표시({{P1}}, {{G1}})를 실제 주소로 바꾸고, 못 바꾼 이미지는 제거
+    const urlFor = (tok: string) => {
+      const m = tok.match(/^([PG])(\d+)$/)
+      if (!m) return ""
+      const n = Number(m[2])
+      if (m[1] === "P") return photos[n - 1]?.url || ""
+      const s = shots[n - 1]
+      return s?.ok && s.url ? s.url : ""
+    }
+    const used = new Set<string>()
     let dropped = 0
     html = html.replace(/<img\b[^>]*>/gi, (tag: string) => {
       const src = (tag.match(/src=["']([^"']+)["']/i) || [])[1] || ""
-      if (allowed.has(src.replace(/&amp;/g, "&"))) return tag
-      dropped++
-      return ""
+      const tok = (src.match(/\{\{\s*([PG]\d+)\s*\}\}/) || [])[1] || ""
+      let real = tok ? urlFor(tok) : ""
+      // 혹시 AI가 실제 주소를 그대로 쓴 경우도 허용
+      if (!real && photos.some((p) => p.url === src.replace(/&amp;/g, "&"))) real = src.replace(/&amp;/g, "&")
+      if (!real) {
+        dropped++
+        return ""
+      }
+      used.add(real)
+      const isAi = tok.startsWith("G")
+      const fixed = tag.replace(src, () => real).replace(/<img/i, '<img referrerpolicy="no-referrer"')
+      return isAi
+        ? fixed + '<p style="font-size:12px;color:#999;margin:4px 0 0;text-align:center">연출 이미지입니다. 실제 상품은 위 실사진을 참고해 주세요.</p>'
+        : fixed
     })
+    html = html.replace(/\{\{\s*[PG]\d+\s*\}\}/g, "")
+
+    // 안전장치: 실제 사진이 하나도 안 들어갔으면 고른 사진을 아래에 모두 붙인다
+    const realUsed = photos.filter((p) => used.has(p.url)).length
+    if (photos.length && realUsed === 0) {
+      const gallery = photos
+        .map(
+          (p) =>
+            `<img src="${p.url}" referrerpolicy="no-referrer" style="width:100%;display:block;margin:0 0 12px">` +
+            (p.caption ? `<p style="font-size:16px;color:#555;text-align:center;margin:0 0 24px">${p.caption.replace(/[<>&"]/g, "")}</p>` : ""),
+        )
+        .join("")
+      html = html.replace(/<\/div>\s*$/, `<div style="margin-top:56px">${gallery}</div></div>`)
+      if (!/<\/div>\s*$/.test(html)) html += gallery
+      warnings.push("AI가 실제 사진을 하나도 넣지 않아, 고른 사진을 상세페이지 아래에 모두 붙였습니다.")
+    }
+    const unusedReal = photos.map((p, i) => (used.has(p.url) ? 0 : i + 1)).filter(Boolean)
+    if (realUsed && unusedReal.length) warnings.push(`사진 ${unusedReal.join(", ")}번은 상세페이지에 쓰이지 않았습니다. 이유는 아래 AI 사진 분석을 보세요.`)
+    for (const s of shots) {
+      if (s.ok) warnings.push(`AI 연출 사진 "${s.what}" 추가 (검수 ${s.score}/10 통과). 네이버 신선식품에는 AI 생성 이미지를 쓰지 마세요.`)
+      else warnings.push(`AI 연출 사진 "${s.what}"은 품질 기준 미달로 넣지 않았습니다${s.error ? ` (${s.error})` : ""}.`)
+    }
+
     // 입력에 없는 당도 수치가 들어갔는지 점검
     const source = JSON.stringify(info) + extras.map((e) => e.caption).join(" ")
-    const warnings: string[] = []
     const plain = html.replace(/<[^>]+>/g, " ")
     for (const m of plain.matchAll(/(\d+(?:\.\d+)?)\s*(?:brix|브릭스)/gi)) {
       if (!source.includes(m[1])) warnings.push(`상세글에 메모에 없는 당도 수치 ${m[1]}가 있습니다. 확인하세요.`)
     }
     for (const e of extras) if (!html.includes(e.url)) warnings.push("추가한 사진 중 상세페이지에 들어가지 않은 것이 있습니다.")
     if (!vision) warnings.push("사진을 직접 보지 못하고 글만으로 작성했습니다. 사진 속 문구(예: 13브릭스)는 직접 확인하세요.")
-    if (dropped) warnings.push(`허용되지 않은 이미지 ${dropped}개를 제거했습니다.`)
+    if (dropped) warnings.push(`주소를 알 수 없는 이미지 ${dropped}개를 제거했습니다.`)
     await store().setJSON(key, {
       running: false,
       at: now(),
@@ -199,6 +284,7 @@ async function aiDetail(job: any) {
       warnings: [...new Set(warnings)],
       html,
       vision,
+      shots,
     })
   } catch (e: any) {
     await store().setJSON(key, { running: false, at: now(), error: String(e?.message || e) })
@@ -209,5 +295,5 @@ export default async (req: Request) => {
   if (!isLoggedIn(req)) return
   const job = await req.json().catch(() => ({}))
   if (job.type === "refresh") await refreshProducts()
-  if (job.type === "ai" && job.sellerProductId) await aiDetail(job)
+  if (job.type === "ai" && job.sellerProductId) await aiDetail({ ...job, origin: new URL(req.url).origin })
 }
