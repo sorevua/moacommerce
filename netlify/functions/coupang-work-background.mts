@@ -755,7 +755,12 @@ async function createNew(job: any) {
         const kg = nm.match(/(\d+(?:\.\d+)?)\s*kg/i)
         const per = (job.perPieceGram || {})[nm]
         if (/개당/.test(t)) { if (per) v = `${per}g` }
-        else if (/중량|무게/.test(t) && kg) v = a.basicUnit === "g" ? `${Number(kg[1]) * 1000}g` : `${kg[1]}kg`
+        else if (/중량|무게/.test(t) && kg) {
+          v = a.basicUnit === "g" ? `${Number(kg[1]) * 1000}g` : `${kg[1]}kg`
+          // 글자형 중량은 등급을 붙여 옵션끼리 겹치지 않게 한다 (예: 5kg 특대)
+          const gr = (nm.match(/특대|대과|중과|소과|로얄|프리미엄|가정용|못난이/) || [""])[0]
+          if (a.dataType === "STRING" && gr) v = `${v} ${gr}`
+        }
         else if (/수량/.test(t)) v = `1${a.basicUnit && a.basicUnit !== "없음" ? a.basicUnit : "개"}`
         else if (/등급|크기|사이즈|과/.test(t)) v = (nm.match(/특대|대과|중과|소과|특|대|중|소/) || [""])[0]
         if (v) { it.attributes.push({ attributeTypeName: t, attributeValueName: v }); if (a.groupNumber && a.groupNumber !== "NONE") groupsDone.add(a.groupNumber) }
@@ -803,7 +808,7 @@ async function createNew(job: any) {
       if (miss.length) throw new Error(`"${it.itemName}" 필수 정보가 없습니다: ${miss.join(", ")}. 업체에 확인해서 넣어 주세요.`)
     }
     log.push(`브랜드: ${body.brand} / 옵션1 속성: ${JSON.stringify(body.items[0]?.attributes || [])}`)
-    { const d: any = JSON.parse(JSON.stringify(body.items[0] || {})); delete d.images; delete d.contents; delete d.notices; delete d.searchTags; log.push("옵션1 전체: " + JSON.stringify(d).slice(0, 1500)) }
+    { const d: any = JSON.parse(JSON.stringify(body.items[0] || {})); delete d.images; delete d.contents; delete d.notices; delete d.searchTags; log.push("구매옵션: " + body.items.map((it: any) => it.itemName + "=" + it.attributes.filter((a: any) => a.exposed === "EXPOSED").map((a: any) => a.attributeValueName).join("/")).join(" | ")) }
     log.push("쿠팡에 임시저장 요청 중…"); await save({ running: true })
     const r = await createProduct(body)
     const id = String(r?.data ?? "")
