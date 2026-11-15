@@ -201,12 +201,23 @@ $$("nav button").forEach(b => b.onclick = () => {
 })
 
 async function loadAll() {
-  ;[VENDORS, ORDERS, SETTINGS, CP] = await Promise.all([api("vendors"), api("orders"), api("settings"), api("coupang/status").catch(() => ({ configured: false, couriers: {} }))])
+  // 쿠팡 상품 목록은 다른 데이터를 기다리지 않고 바로 불러온다
+  const cpP = loadCpProducts()
+  ;[VENDORS, SETTINGS, CP] = await Promise.all([api("vendors"), api("settings"), api("coupang/status").catch(() => ({ configured: false, couriers: {} }))])
   if (!currentVendorId && VENDORS[0]) currentVendorId = VENDORS[0].id
-  renderVendorSelects(); renderOrders(); renderVendors(); renderSettings(); loadCpProducts()
+  ORDERS = ORDERS || []
+  renderVendorSelects(); renderVendors(); renderSettings(); renderCp()
+  ORDERS = await api("orders"); renderOrders()
+  await cpP
 }
 
 
+// ---------- 사진 빠르게 불러오기: 쿠팡 사진은 Netlify 이미지 CDN에서 줄인 크기로, 실패하면 중계로 ----------
+const isCp = u => /^https:\/\/[a-z0-9]+\.coupangcdn\.com\//i.test(u || "")
+const imgUrl = (u, w) => !u ? "" : u.startsWith(location.origin) || u.startsWith("/") ? u : isCp(u) ? `/.netlify/images?url=${encodeURIComponent(u)}&w=${w}&q=80` : "/api/admin/coupang/proxy?u=" + encodeURIComponent(u)
+const proxyUrl = u => "/api/admin/coupang/proxy?u=" + encodeURIComponent(u)
+function thumb(u, size, extra = "") { return `<img src="${imgUrl(u, size * 2)}" data-raw="${esc(u)}" loading="lazy" decoding="async" onerror="if(!this.dataset.f){this.dataset.f=1;this.src=proxyUrl(this.dataset.raw)}" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:8px;border:1px solid var(--line);${extra}">` }
+const debounce = (fn, ms) => { let h; return (...a) => { clearTimeout(h); h = setTimeout(() => fn(...a), ms) } }
 // ---------- 쿠팡 상품 ----------
 let CPP = { products: [] }, cpPoll = null
 const cpSel = new Set()
@@ -219,7 +230,7 @@ $("#cpRefresh").onclick = async () => {
   await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "refresh" }) })
   toast("쿠팡에서 불러오는 중… 상품 수에 따라 1~3분"); setTimeout(loadCpProducts, 2500)
 }
-$("#cpq").oninput = renderCp; $("#cpf").onchange = renderCp
+$("#cpq").oninput = debounce(renderCp, 250); $("#cpf").onchange = renderCp
 function supplyFor(vid) {
   for (const v of VENDORS) for (const p of v.products || []) if (String(p.coupangItemId || "") === String(vid)) return { vendor: v.name, name: p.name, supply: Number(p.supply) }
   return null
@@ -248,7 +259,7 @@ function renderCp() {
       return `<tr>
         <td><input type="checkbox" class="cpchk" data-vid="${esc(i.vendorItemId)}" ${cpSel.has(i.vendorItemId) ? "checked" : ""}></td>
         <td><div class="row" style="flex-wrap:nowrap;align-items:flex-start">
-          ${i.image ? `<a href="${esc(i.image)}" target="_blank" rel="noopener"><img src="/api/admin/coupang/proxy?u=${encodeURIComponent(i.image)}" loading="lazy" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a>` : `<div style="width:64px;height:64px;border-radius:8px;background:#f1f1ee;border:1px dashed var(--line);font-size:11px;color:#999;display:flex;align-items:center;justify-content:center;text-align:center">사진<br>없음</div>`}
+          ${i.image ? `<a href="${esc(i.image)}" target="_blank" rel="noopener">${thumb(i.image, 64)}</a>` : `<div style="width:64px;height:64px;border-radius:8px;background:#f1f1ee;border:1px dashed var(--line);font-size:11px;color:#999;display:flex;align-items:center;justify-content:center;text-align:center">사진<br>없음</div>`}
           <div>${esc(i.itemName)}<div class="note">${esc(i.vendorItemId)}</div>
           ${i.vendorItemId ? `<label class="btn small" style="display:inline-block;margin-top:4px;font-weight:700;cursor:pointer">대표사진 바꾸기<input type="file" accept="image/*" class="cpmain hidden" data-vid="${esc(i.vendorItemId)}" data-spid="${esc(p.sellerProductId)}"></label>` : ""}</div></div></td>
         <td>${i.onSale === false ? '<span style="color:#b91c1c;font-weight:700">판매중지</span>' : i.onSale ? '<span style="color:#15803d;font-weight:700">판매중</span>' : "-"}</td>
@@ -410,7 +421,7 @@ const DTHEME = {
   clean: { main: "#1F1F1F", deep: "#111111", soft: "#ECECEC", band: "#F6F6F4", ink: "#1A1A1A" },
 }
 const dx = s => esc(s ?? "")
-const proxied = u => !u ? "" : u.startsWith(location.origin) ? u : "/api/admin/coupang/proxy?u=" + encodeURIComponent(u)
+const proxied = u => imgUrl(u, 1600)
 function designSections(d, themeKey) {
   const t = DTHEME[themeKey] || DTHEME.citrus
   const F = "font-family:Pretendard,'Pretendard Variable','Apple SD Gothic Neo','Malgun Gothic',sans-serif;"
@@ -605,7 +616,14 @@ function loadH2I() {
 // ================= 상세페이지 캔버스 엔진: 글자 폭을 직접 재서 배치하므로 겹침·잘림이 생기지 않는다 =================
 const PG = { W: 780, S: 1.5, FONT: "Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif" }
 function pgLoadImg(u) {
-  return new Promise(res => { if (!u) return res(null); const im = new Image(); im.onload = () => res(im.naturalWidth ? im : null); im.onerror = () => res(null); im.src = proxied(u) })
+  return new Promise(res => {
+    if (!u) return res(null)
+    const im = new Image(); let fb = false
+    im.onload = () => res(im.naturalWidth ? im : null)
+    im.onerror = () => { if (!fb && isCp(u)) { fb = true; im.src = proxyUrl(u) } else res(null) }
+    im.src = proxied(u)
+    setTimeout(() => res(im.naturalWidth ? im : null), 25000)
+  })
 }
 // 비슷한 사진 찾기용 지문(크기·압축이 달라도 같은 사진이면 거의 같은 값)
 function pgHash(im) {
@@ -855,7 +873,7 @@ async function openCpEdit(spid) {
     <details class="e_adv" style="margin:10px 0"><summary style="font-weight:700;cursor:pointer;color:var(--mute)">세부 설정 (안 건드려도 됩니다)</summary>
     <h3 style="margin:10px 0 6px">① 사진 고르기</h3>
     <p class="note">AI가 사진을 직접 보고 분석합니다. 옛 문구(예: 13브릭스)가 박힌 사진처럼 쓰기 싫은 사진은 체크를 빼세요. 사진을 누르면 크게 보입니다.</p>
-    <div class="e_imgs" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${imgs.map((u, i) => `<label style="width:110px;font-weight:400;text-align:center"><a href="${esc(u)}" target="_blank" rel="noopener"><img src="/api/admin/coupang/proxy?u=${encodeURIComponent(u)}" loading="lazy" style="width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a><br><input type="checkbox" class="e_use cpchk" data-u="${esc(u)}" checked> 사진 ${i + 1}</label>`).join("") || '<span class="note">등록된 사진을 찾지 못했습니다.</span>'}</div>
+    <div class="e_imgs" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${imgs.map((u, i) => `<label style="width:110px;font-weight:400;text-align:center"><a href="${esc(u)}" target="_blank" rel="noopener">${thumb(u, 110)}</a><br><input type="checkbox" class="e_use cpchk" data-u="${esc(u)}" checked> 사진 ${i + 1}</label>`).join("") || '<span class="note">등록된 사진을 찾지 못했습니다.</span>'}</div>
     <div style="background:#f7f7f4;border-radius:8px;padding:10px;margin:8px 0">
       <label>새 사진 추가 <span class="note">(당도계·농장·포장 등 실제 사진. AI가 알맞은 자리에 넣습니다)</span></label>
       <input type="file" accept="image/*" class="e_img">
