@@ -26,11 +26,18 @@ export default async (req: Request) => {
       for (const k of kgs) for (const [i, im] of (byName(k)?.imgs || []).entries()) if (im.type !== "REPRESENTATION" && !skip.has(`${k}-${i + 1}`) && !extras.includes(im.url) && !mains.includes(im.url)) extras.push(im.url)
       const list = [...new Set([...mains, ...extras])].slice(0, 10)
       const up: string[] = []
-      for (const [i, s] of list.entries()) up.push(await naverUploadImage(s, `yura-${no}-${i}.jpg`))
+      const fails: string[] = []
+      for (const [i, s] of list.entries()) {
+        let ok = ""
+        for (const ext of ["jpg", "png", "jpeg"]) { try { ok = await naverUploadImage(s, `yura-${no}-${i}.${ext}`); break } catch (e: any) { fails.push(`${s} (${ext}): ${String(e?.message || e).slice(0, 80)}`) } }
+        if (ok) up.push(ok)
+        else if (i < kgs.length) { out[no] = { error: "대표사진 업로드 실패", fails, list }; break }
+      }
+      if (out[no]?.error) continue
       const g: any = await ncall("GET", `/v2/products/origin-products/${no}`)
       g.originProduct.images = { representativeImage: { url: up[0] }, optionalImages: up.slice(1).map((url) => ({ url })) }
       await ncall("PUT", `/v2/products/origin-products/${no}`, "", { originProduct: g.originProduct, smartstoreChannelProduct: g.smartstoreChannelProduct })
-      out[no] = { count: up.length, source: list }
+      out[no] = { count: up.length, source: list, fails }
     }
     return Response.json(out)
   }
