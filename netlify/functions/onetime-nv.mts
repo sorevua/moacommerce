@@ -26,6 +26,13 @@ export default async (req: Request) => {
       r = { started: true }
     }
     else if (q === "status") { const { getStore } = await import("@netlify/blobs"); r = await getStore({ name: "admin-settings", consistency: "strong" }).get("nvreg", { type: "json" }) }
+    else if (q === "addaddr") {
+      const body = { name: "광양 키위농가", addressType: "GENERAL", postalCode: "57707", baseAddress: "전라남도 광양시 진상면 신시3길", detailAddress: "13-23", phoneNumber1: "010-8587-0003", roadNameAddress: true }
+      r = {}
+      for (const [m, path] of [["POST", "/v1/seller/addressbooks"], ["POST", "/v1/seller/addressbook"], ["POST", "/v1/seller/address-books"]] as const) {
+        try { r[path] = await ncall(m, path, "", body) ; break } catch (e: any) { r[path] = String(e?.message || e).slice(0, 300) }
+      }
+    }
     else r = { error: "q?" }
   } catch (e: any) { r = { error: String(e?.message || e) } }
   const s = JSON.stringify(r)
