@@ -47,16 +47,16 @@ export default async (req: Request) => {
   }
 
   if (body.mode === "apply") {
-    const T = { 골드키위: 11627, 그린키위: 14282, 키위: 8950, 참다래: 8951, 과일선물: 172173, 산지직송: 8512, 제철과일: 11810, 감귤: 8717, 귤: 10496, 제주감귤: 11189 } as Record<string, number>
+    const T = { 골드키위: 11627, 그린키위: 14282, 키위: 8950, 참다래: 8951, 과일선물: 172173, 산지직송: 8512, 제철과일: 11810, 감귤: 8717, 귤: 10496, 제주감귤: 11189, 과일선물세트: 217867 } as Record<string, number>
     const tags = (ws: string[]) => ws.map((w) => ({ code: T[w], text: w }))
     const BOX_K = { attributeSeq: 10041638, attributeValueSeq: 10810987 }, BOX_J = { attributeSeq: 10041648, attributeValueSeq: 10810987 }
     const COLD = { attributeSeq: 10014420, attributeValueSeq: 10771835 }
     const KG5 = { attributeSeq: 10014353, attributeValueSeq: 112447, attributeRealValue: "5", attributeRealValueUnitCode: "A02002" }
     const PLAN: Record<string, any> = {
-      "13814609094": { maker: "제주담은귤", tags: tags(["감귤", "귤", "제주감귤", "과일선물", "산지직송", "제철과일"]), attrs: [{ attributeSeq: 10020581, attributeValueSeq: 10280565 }, BOX_J, COLD] },
-      "13814609279": { maker: "제주담은귤", tags: tags(["감귤", "귤", "제주감귤", "과일선물", "산지직송", "제철과일"]), attrs: [{ attributeSeq: 10020581, attributeValueSeq: 10280565 }, KG5, BOX_J, COLD] },
-      "13814619964": { maker: "광양 키위농가", name: "전남 광양 산지직송 골드키위 5kg 특대 대과 중과 소과", tags: tags(["골드키위", "키위", "참다래", "과일선물", "산지직송", "제철과일"]), attrs: [{ attributeSeq: 10020576, attributeValueSeq: 10462599 }, KG5, BOX_K, COLD] },
-      "13814620214": { maker: "광양 키위농가", tags: tags(["그린키위", "키위", "참다래", "과일선물", "산지직송", "제철과일"]), attrs: [{ attributeSeq: 10020576, attributeValueSeq: 10832320 }, KG5, BOX_K, COLD] },
+      "13814609094": { maker: "제주담은귤", tags: tags(["제주감귤", "과일선물", "과일선물세트", "산지직송", "제철과일"]), attrs: [{ attributeSeq: 10020581, attributeValueSeq: 10280565 }, BOX_J, COLD] },
+      "13814609279": { maker: "제주담은귤", tags: tags(["제주감귤", "과일선물", "과일선물세트", "산지직송", "제철과일"]), attrs: [{ attributeSeq: 10020581, attributeValueSeq: 10280565 }, KG5, BOX_J, COLD] },
+      "13814619964": { maker: "광양 키위농가", name: "전남 광양 산지직송 골드키위 5kg 특대 대과 중과 소과", tags: tags(["골드키위", "과일선물", "과일선물세트", "산지직송", "제철과일"]), attrs: [{ attributeSeq: 10020576, attributeValueSeq: 10462599 }, KG5, BOX_K, COLD] },
+      "13814620214": { maker: "광양 키위농가", tags: tags(["그린키위", "과일선물", "과일선물세트", "산지직송", "제철과일"]), attrs: [{ attributeSeq: 10020576, attributeValueSeq: 10832320 }, KG5, BOX_K, COLD] },
     }
     log.results = {}
     for (const [no, plan] of Object.entries(PLAN)) {
@@ -67,10 +67,20 @@ export default async (req: Request) => {
         da.seoInfo = { ...(da.seoInfo || {}), sellerTags: plan.tags }
         da.naverShoppingSearchInfo = { ...(da.naverShoppingSearchInfo || {}), modelName: String(p.name).slice(0, 50), manufacturerName: plan.maker, catalogMatchingYn: false }
         da.productAttributes = plan.attrs
-        await ncall("PUT", `/v2/products/origin-products/${no}`, "", { originProduct: p, smartstoreChannelProduct: o.smartstoreChannelProduct })
+        const removed: string[] = []
+        for (let i = 0; ; i++) {
+          try { await ncall("PUT", `/v2/products/origin-products/${no}`, "", { originProduct: p, smartstoreChannelProduct: o.smartstoreChannelProduct }); break }
+          catch (e: any) {
+            const m = String(e?.message || "").match(/태그명: ([^)]+)\)/)
+            if (!m || i >= 3) throw e
+            const bad = m[1].split(",").map((x) => x.trim())
+            removed.push(...bad)
+            da.seoInfo.sellerTags = da.seoInfo.sellerTags.filter((t: any) => !bad.includes(t.text))
+          }
+        }
         const chk: any = await ncall("GET", `/v2/products/origin-products/${no}`)
         const d2 = chk.originProduct.detailAttribute
-        log.results[no] = { ok: true, name: chk.originProduct.name, tags: d2.seoInfo?.sellerTags, search: d2.naverShoppingSearchInfo, attrs: d2.productAttributes }
+        log.results[no] = { ok: true, removed, name: chk.originProduct.name, tags: d2.seoInfo?.sellerTags, search: d2.naverShoppingSearchInfo, attrs: d2.productAttributes }
       } catch (e: any) { log.results[no] = { ok: false, error: String(e?.message || e).slice(0, 1500) } }
       await save()
     }
