@@ -693,6 +693,7 @@ async function createNew(job: any) {
       if (!mi.ok || !mi.url) throw new Error("AI 대표사진 실패: " + (mi.error || "") + " " + mi.tries.map((t: any) => `${t.score}점 ${t.reasons}`).join(" / "))
       mainUrl = mi.url
       log.push(`AI 대표사진 완성 (검수 ${mi.score}/10)`)
+      await save({ running: true, mainUrl })
     }
     // 4) 틀 상품을 복사해 새 상품 데이터 만들기 (배송·반품·출고지는 틀 그대로)
     const body: any = JSON.parse(JSON.stringify(tpl))
@@ -730,6 +731,9 @@ async function createNew(job: any) {
       it.salePrice = it.originalPrice
       it.maximumBuyCount = Number(base.maximumBuyCount) || 999
       it.attributes = (am.attributes || []).filter((a: any) => a?.attributeTypeName && a?.attributeValueName).map((a: any) => ({ attributeTypeName: String(a.attributeTypeName), attributeValueName: String(a.attributeValueName) }))
+      // 카테고리에 없는 속성·추측한 개당 중량은 버린다
+      const metaNames = new Set((meta?.attributes || []).map((a: any) => a.attributeTypeName))
+      it.attributes = it.attributes.filter((a: any) => metaNames.has(a.attributeTypeName) && !/개당/.test(a.attributeTypeName))
       // 필수 구매옵션이 빠졌으면 옵션 이름에서 채운다
       const has = new Set(it.attributes.map((a: any) => a.attributeTypeName))
       const groupsDone = new Set<string>()
@@ -757,8 +761,12 @@ async function createNew(job: any) {
       it.searchTags = tags
       return it
     })
-    body.brand = String(body.brand || job.brand || "모아커머스")
+    body.brand = String(job.brand || "모아커머스")
     if (!body.manufacture) body.manufacture = body.brand
+    for (const it of body.items) {
+      const miss = mand.filter((a: any) => !it.attributes.some((x: any) => x.attributeTypeName === a.attributeTypeName)).map((a: any) => a.attributeTypeName)
+      if (miss.length) throw new Error(`"${it.itemName}" 필수 정보가 없습니다: ${miss.join(", ")}. 업체에 확인해서 넣어 주세요.`)
+    }
     log.push(`브랜드: ${body.brand} / 옵션1 속성: ${JSON.stringify(body.items[0]?.attributes || [])}`)
     log.push("쿠팡에 임시저장 요청 중…"); await save({ running: true })
     const r = await createProduct(body)

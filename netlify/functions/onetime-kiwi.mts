@@ -17,10 +17,15 @@ export default async (req: Request) => {
   if (u.searchParams.get("run") === "1") {
     const started: any = (await st.get("kiwi-run", { type: "json" })) || {}
     if (started.at && u.searchParams.get("force") !== "1") return Response.json({ already: started })
+    const per: any = JSON.parse(u.searchParams.get("per") || "{}")
+    const prevRun: any = (await st.get("kiwi-run", { type: "json" })) || {}
     const photos = [1, 5, 6, 8, 10, 9].map((n) => `${u.origin}/assets/kiwi/farm-${String(n).padStart(2, "0")}.jpg`)
     const run: any = { at: new Date().toISOString(), jobs: {} }
     for (const k of KIWI) {
       const jobId = `kiwi-${k.key}-${Date.now()}`
+      const prev: any = prevRun.jobs?.[k.key] ? await st.get(`create-${prevRun.jobs[k.key]}`, { type: "json" }) : null
+      const perPieceGram: any = {}
+      k.options.forEach(([name], i) => { const g = Number((per[k.key] || [])[i]); if (g > 0) perPieceGram[name] = g })
       run.jobs[k.key] = jobId
       await fetch(`${u.origin}/.netlify/functions/coupang-work-background`, {
         method: "POST",
@@ -28,7 +33,7 @@ export default async (req: Request) => {
           type: "create", token: tok, jobId, templateId: "16417633126", name: k.name, displayName: k.displayName,
           options: k.options.map(([name, price]) => ({ name, price })),
           facts: "전라남도 광양시 농가에서 수확해 산지에서 바로 발송. 5kg(상자 포함 중량). 등급: 특대·대과·중과·소과. 무료배송. 신선식품 단순 변심 반품 불가, 반품 배송비 편도 5,000원.",
-          photoPrompt: k.photo, photos, outboundShippingPlaceCode: "25735840",
+          photoPrompt: k.photo, photos, mainImage: prev?.mainUrl || "", perPieceGram, brand: "모아커머스", outboundShippingPlaceCode: "25735840",
           returnInfo: { name: "광양 키위농가", phone: "010-8587-0003", zip: "57707", address: "전라남도 광양시 진상면 신시3길", detail: "13-23" },
           returnCharge: 5000,
         }),
