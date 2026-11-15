@@ -303,20 +303,29 @@ export function cleanTags(tags: string[]) {
 }
 
 // 기존 상세 내용에서 이미지 주소와 글을 뽑아낸다 (AI 재작성용)
+function normImg(u: string) {
+  u = String(u || "").trim().replace(/&amp;/g, "&")
+  if (!u) return ""
+  if (u.startsWith("//")) return "https:" + u
+  if (/^https?:\/\//i.test(u)) return u.replace(/^http:/i, "https:")
+  if (/\.(jpe?g|png|gif|webp)(\?|$)/i.test(u)) return "https://image1.coupangcdn.com/image/" + u.replace(/^\/+/, "")
+  return ""
+}
+
+// 상품 사진 + 상세페이지 안의 사진(경로만 있는 것, //로 시작하는 것 포함)을 모두 뽑는다
 export function extractContent(p: any) {
-  const images = new Set<string>()
+  const images: string[] = []
+  const add = (u: string) => { const n = normImg(u); if (n && !images.includes(n)) images.push(n) }
   const texts: string[] = []
   for (const it of p.items || []) {
-    for (const im of it.images || []) { const u = im.cdnPath ? `https://image1.coupangcdn.com/image/${im.cdnPath}` : im.vendorPath; if (u) images.add(u) }
+    for (const im of it.images || []) add(im.cdnPath || im.vendorPath)
     for (const c of it.contents || []) for (const d of c.contentDetails || []) {
       const content = String(d.content || "")
-      if (d.detailType === "IMAGE" && /^https?:/.test(content)) images.add(content)
-      else {
-        for (const m of content.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) images.add(m[1])
-        const t = content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
-        if (t) texts.push(t.slice(0, 1500))
-      }
+      if (d.detailType === "IMAGE") { add(content); continue }
+      for (const m of content.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) add(m[1])
+      const t = content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+      if (t) texts.push(t.slice(0, 1500))
     }
   }
-  return { images: [...images].slice(0, 12), text: texts.join("\n").slice(0, 3000) }
+  return { images: images.slice(0, 24), text: texts.join("\n").slice(0, 3000) }
 }

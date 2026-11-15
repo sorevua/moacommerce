@@ -495,7 +495,7 @@ async function openCpEdit(spid) {
   box.innerHTML = `<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px">
     <h3 style="margin:0 0 6px">① 사진 고르기</h3>
     <p class="note">AI가 사진을 직접 보고 분석합니다. 옛 문구(예: 13브릭스)가 박힌 사진처럼 쓰기 싫은 사진은 체크를 빼세요. 사진을 누르면 크게 보입니다.</p>
-    <div class="e_imgs" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${imgs.map((u, i) => `<label style="width:110px;font-weight:400;text-align:center"><a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" loading="lazy" referrerpolicy="no-referrer" style="width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a><br><input type="checkbox" class="e_use cpchk" data-u="${esc(u)}" checked> 사진 ${i + 1}</label>`).join("") || '<span class="note">등록된 사진을 찾지 못했습니다.</span>'}</div>
+    <div class="e_imgs" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${imgs.map((u, i) => `<label style="width:110px;font-weight:400;text-align:center"><a href="${esc(u)}" target="_blank" rel="noopener"><img src="/api/admin/coupang/proxy?u=${encodeURIComponent(u)}" loading="lazy" style="width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a><br><input type="checkbox" class="e_use cpchk" data-u="${esc(u)}" checked> 사진 ${i + 1}</label>`).join("") || '<span class="note">등록된 사진을 찾지 못했습니다.</span>'}</div>
     <div style="background:#f7f7f4;border-radius:8px;padding:10px;margin:8px 0">
       <label>새 사진 추가 <span class="note">(당도계·농장·포장 등 실제 사진. AI가 알맞은 자리에 넣습니다)</span></label>
       <input type="file" accept="image/*" class="e_img">

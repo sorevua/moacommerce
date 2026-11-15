@@ -315,9 +315,9 @@ export default async (req: Request, context: Context) => {
         const u = url.searchParams.get("u") || ""
         let host = ""
         try { host = new URL(u).hostname } catch {}
-        if (!/(^|\.)coupangcdn\.com$/.test(host) && host !== url.hostname) return json({ error: "허용되지 않은 주소" }, 400)
+        if (!/^https:\/\//.test(u) || !host || /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(host) || host.endsWith(".internal")) return json({ error: "허용되지 않은 주소" }, 400)
         const r = await fetch(u, { headers: { "user-agent": "Mozilla/5.0" } })
-        if (!r.ok) return json({ error: "사진을 가져오지 못했습니다." }, 502)
+        if (!r.ok || !/^image\//.test(r.headers.get("content-type") || "")) return json({ error: "사진을 가져오지 못했습니다." }, 502)
         return new Response(await r.arrayBuffer(), { headers: { "content-type": r.headers.get("content-type") || "image/jpeg", "cache-control": "private, max-age=3600" } })
       }
       // ----- 상세페이지용 공개 사진 -----

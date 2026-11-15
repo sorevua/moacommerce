@@ -235,7 +235,7 @@ async function aiDetail(job: any) {
       throw new Error("Netlify AI Gateway가 켜져 있지 않습니다. (Netlify 크레딧 요금제에서만 동작)")
     const p = await getProduct(job.sellerProductId)
     const c = extractContent(p)
-    const existing: string[] = (Array.isArray(job.images) ? job.images : c.images).filter((u: string) => c.images.includes(u)).slice(0, 10)
+    const existing: string[] = (Array.isArray(job.images) ? job.images : c.images).filter((u: string) => c.images.includes(u)).slice(0, 16)
     const extras: any[] = (Array.isArray(job.extras) ? job.extras : []).filter((e: any) => /^https:\/\/[^\s"'<>]+\/img\/[a-f0-9-]{36}\.jpg$/.test(String(e?.url || ""))).slice(0, 6)
     const photos = [
       ...extras.map((e) => ({ url: e.url, kind: "판매자가 추가한 사진(반드시 사용)", caption: String(e.caption || "") })),
@@ -443,7 +443,7 @@ async function aiDesign(job: any) {
       throw new Error("Netlify AI Gateway가 켜져 있지 않습니다.")
     const p = await getProduct(job.sellerProductId)
     const c = extractContent(p)
-    const existing: string[] = (Array.isArray(job.images) ? job.images : c.images).filter((u: string) => c.images.includes(u)).slice(0, 10)
+    const existing: string[] = (Array.isArray(job.images) ? job.images : c.images).filter((u: string) => c.images.includes(u)).slice(0, 16)
     const extras: any[] = (Array.isArray(job.extras) ? job.extras : []).filter((e: any) => /^https:\/\/[^\s"'<>]+\/img\/[a-f0-9-]{36}\.jpg$/.test(String(e?.url || ""))).slice(0, 6)
     const photos = [
       ...extras.map((e) => ({ url: e.url, kind: "판매자가 추가한 사진(반드시 사용)", caption: String(e.caption || "") })),
