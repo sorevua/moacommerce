@@ -42,6 +42,9 @@ const JEJU_DAMEUN_COLUMNS = [
   { header: "배송메세지1", field: "message" },
 ]
 
+const JEJU_ADDR = "제주특별자치도 서귀포시 남원읍 태신삼석로73번길 76-15"
+const JEJU_ZIP = "63617"
+
 function seedVendor() {
   return {
     id: "jeju-dameun",
