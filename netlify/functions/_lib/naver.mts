@@ -54,3 +54,76 @@ export async function changedOrders(hours = 24) {
   const from = new Date(Date.now() - hours * 3600e3 + 9 * 3600e3).toISOString().replace("Z", "+09:00")
   return ncall("GET", "/v1/pay-order/seller/product-orders/last-changed-statuses", `lastChangedFrom=${encodeURIComponent(from)}`)
 }
+
+// ---------- 주문 수집 ----------
+const NAVER_COURIER: Record<string, string> = { CJGLS: "CJGLS", HYUNDAI: "LOTTE", HANJIN: "HANJIN", EPOST: "EPOST", KGB: "KGB", KDEXP: "KDEXP", ILYANG: "ILYANG", DAESIN: "DAESIN", CHUNIL: "CHUNIL", HDEXP: "HDEXP" }
+const phone = (s: string) => String(s || "").replace(/\s/g, "")
+
+export async function productOrderDetails(ids: string[]) {
+  const out: any[] = []
+  for (let i = 0; i < ids.length; i += 300) {
+    const r = await ncall("POST", "/v1/pay-order/seller/product-orders/query", "", { productOrderIds: ids.slice(i, i + 300) })
+    out.push(...(r?.data || []))
+  }
+  return out
+}
+
+export async function syncNaverOrders() {
+  const orders = getStore({ name: "admin-orders", consistency: "strong" })
+  const vendors = getStore({ name: "admin-vendors", consistency: "strong" })
+  const state = tokens()
+  const { blobs: vb } = await vendors.list()
+  const vlist: any[] = (await Promise.all(vb.map((b) => vendors.get(b.key, { type: "json" })))).filter(Boolean)
+  const byItem = new Map<string, { vendorId: string; productName: string }>()
+  for (const v of vlist) for (const p of v.products || []) if (p.naverItemId) byItem.set(String(p.naverItemId).trim(), { vendorId: v.id, productName: p.name })
+
+  const ch: any = await changedOrders(25)
+  const list: any[] = ch?.data?.lastChangeStatuses || []
+  const payed = list.filter((x) => x.productOrderStatus === "PAYED").map((x) => String(x.productOrderId))
+  const canceled = list.filter((x) => /CANCEL/.test(String(x.productOrderStatus) + String(x.claimType || ""))).map((x) => String(x.productOrderId))
+  let added = 0, flagged = 0
+  if (payed.length) {
+    const det = await productOrderDetails(payed)
+    for (const d of det) {
+      const po = d.productOrder || {}, od = d.order || {}, sa = po.shippingAddress || {}
+      const key = `naver-${po.productOrderId}`
+      const map = byItem.get(String(po.optionCode || "")) || byItem.get(String(po.productId || ""))
+      const now = new Date().toISOString()
+      const o = {
+        id: key, channel: "네이버",
+        vendorId: map?.vendorId || "",
+        productName: map?.productName || [po.productName, po.productOption].filter(Boolean).join(" / "),
+        marketProductName: [po.productName, po.productOption].filter(Boolean).join(" / "),
+        qty: Number(po.quantity || 1),
+        salePrice: Math.round(Number(po.totalPaymentAmount || 0) / Math.max(1, Number(po.quantity || 1))) || Number(po.unitPrice || 0),
+        recipientName: sa.name || "", recipientAddress: [sa.baseAddress, sa.detailedAddress].filter(Boolean).join(" "), recipientZip: sa.zipCode || "",
+        recipientPhone: phone(sa.tel1), recipientPhone2: phone(sa.tel2), message: po.shippingMemo || "",
+        status: "접수",
+        market: { name: "naver", productOrderId: String(po.productOrderId), orderId: String(od.orderId || ""), productId: String(po.productId || ""), optionCode: String(po.optionCode || ""), status: po.productOrderStatus, orderedAt: od.paymentDate || od.orderDate, acknowledged: false, needsMapping: !map },
+        createdAt: now, updatedAt: now,
+      }
+      const { modified } = await orders.setJSON(key, o, { onlyIfNew: true })
+      if (modified) added++
+    }
+  }
+  for (const id of canceled) {
+    const o: any = await orders.get(`naver-${id}`, { type: "json" })
+    if (o && o.status !== "취소" && !o.market?.cancelRequested) { o.market.cancelRequested = true; o.updatedAt = new Date().toISOString(); await orders.setJSON(o.id, o); flagged++ }
+  }
+  const result = { at: new Date().toISOString(), ok: true, changed: list.length, added, flagged }
+  await state.setJSON("naver-sync", result)
+  return result
+}
+
+// 발주확인 (네이버 '배송준비')
+export async function naverConfirm(productOrderIds: string[]) {
+  if (!productOrderIds.length) return null
+  return ncall("POST", "/v1/pay-order/seller/product-orders/confirm", "", { productOrderIds })
+}
+
+// 발송처리 (송장 등록)
+export async function naverDispatch(productOrderId: string, courier: string, trackingNumber: string) {
+  const code = NAVER_COURIER[courier] || courier
+  const dispatchDate = new Date(Date.now() + 9 * 3600e3).toISOString().replace(/\.\d+Z$/, ".000+09:00")
+  return ncall("POST", "/v1/pay-order/seller/product-orders/dispatch", "", { dispatchProductOrders: [{ productOrderId, deliveryMethod: "DELIVERY", deliveryCompanyCode: code, trackingNumber, dispatchDate }] })
+}

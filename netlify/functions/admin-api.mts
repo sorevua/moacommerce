@@ -2,6 +2,7 @@ import type { Config, Context } from "@netlify/functions"
 import { getStore } from "@netlify/blobs"
 import { randomUUID } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
+import { naverConfigured, naverConfirm, naverDispatch, syncNaverOrders } from "./_lib/naver.mts"
 import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS, changePrice, stopSale, resumeSale, updateProductContent, cleanTags, returnCenters, outboundPlaces, predictCategory, productHistory } from "./_lib/coupang.mts"
 
 // ---------- 저장소 ----------
@@ -417,6 +418,23 @@ export default async (req: Request, context: Context) => {
       }
     }
 
+    // 네이버
+    if (res === "naver") {
+      if (id === "status" && method === "GET") return json({ configured: naverConfigured(), last: await settingsStore().get("naver-sync", { type: "json" }) })
+      if (!naverConfigured()) return json({ error: "네이버 API 키가 아직 설정되지 않았습니다." }, 400)
+      if (id === "sync" && method === "POST") return json(await syncNaverOrders())
+      if (id === "ack" && method === "POST") {
+        const { orderIds } = await req.json()
+        const list: any[] = (await Promise.all((orderIds || []).map((oid: string) => orders().get(oid, { type: "json" })))).filter((o: any) => o?.market?.name === "naver" && !o.market.acknowledged)
+        if (!list.length) return json({ ok: true, acknowledged: 0 })
+        const r: any = await naverConfirm(list.map((o) => o.market.productOrderId))
+        const ok = new Set((r?.data?.successProductOrderIds || []).map(String))
+        let n = 0
+        for (const o of list) if (ok.has(o.market.productOrderId)) { o.market.acknowledged = true; o.updatedAt = now(); await orders().setJSON(o.id, o); n++ }
+        return json({ ok: true, acknowledged: n })
+      }
+    }
+
     // 송장 등록 (쿠팡 주문이면 쿠팡에도 업로드)
     if (res === "invoice" && method === "POST") {
       const { orderId, courier, invoiceNumber } = await req.json()
@@ -437,6 +455,13 @@ export default async (req: Request, context: Context) => {
         const up = await uploadInvoice([{ shipmentBoxId: o.market.shipmentBoxId, orderId: o.market.orderId, vendorItemId: o.market.vendorItemId, courier, invoiceNumber: num }])
         const r = up?.data?.responseList?.[0]
         if (!r?.succeed) return json({ error: "쿠팡 송장 등록 실패: " + (r?.resultMessage || r?.resultCode || up?.data?.responseMessage || "알 수 없음") }, 400)
+      }
+      if (o.market?.name === "naver") {
+        if (!naverConfigured()) return json({ error: "네이버 API 키가 아직 설정되지 않았습니다." }, 400)
+        if (!o.market.acknowledged) { await naverConfirm([o.market.productOrderId]).catch(() => null); o.market.acknowledged = true }
+        const up: any = await naverDispatch(o.market.productOrderId, courier, num)
+        const fail = up?.data?.failProductOrderInfos?.[0]
+        if (fail) return json({ error: "네이버 송장 등록 실패: " + (fail.message || fail.code || "알 수 없음") }, 400)
       }
       o.invoice = { courier, courierName: COURIERS[courier] || courier, number: num, at: now() }
       o.status = "발송"
