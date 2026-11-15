@@ -16,7 +16,7 @@ export default async (req: Request) => {
     for (const ph of ["010-8587-0003", "+82-10-8587-0003", "+821085870003"]) {
       const body = {
         vendorId: vendorId(), userId, outboundShippingPlaceCode: 25735840, shippingPlaceName: "광양 키위농가", usable: true, global: false,
-        placeAddresses: [addr("ROADNAME", "전라남도 광양시 진상면 신시3길", "13-23", ph), addr("JIBUN", "전라남도 광양시 진상면 섬거리", "458-3", ph)],
+        placeAddresses: [addr("JIBUN", "전라남도 광양시 진상면 섬거리", "458-3", ph), addr("ROADNAME", "전라남도 광양시 진상면 신시3길", "13-23", ph)],
       }
       try { r = await call("PUT", `/v2/providers/openapi/apis/api/v5/vendors/${vendorId()}/outboundShippingCenters/25735840`, "", body); break }
       catch (e: any) { lastErr = String(e?.message || e); if (!/phone|E\.164|전화/i.test(lastErr)) break }
