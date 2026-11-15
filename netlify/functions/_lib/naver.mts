@@ -127,3 +127,21 @@ export async function naverDispatch(productOrderId: string, courier: string, tra
   const dispatchDate = new Date(Date.now() + 9 * 3600e3).toISOString().replace(/\.\d+Z$/, ".000+09:00")
   return ncall("POST", "/v1/pay-order/seller/product-orders/dispatch", "", { dispatchProductOrders: [{ productOrderId, deliveryMethod: "DELIVERY", deliveryCompanyCode: code, trackingNumber, dispatchDate }] })
 }
+
+// ---------- 상품 이미지 업로드 (외부 주소 → 네이버 이미지 서버) ----------
+export async function naverUploadImage(fileUrl: string, fileName = "image.jpg") {
+  const tok = await naverToken()
+  const res = await fetch(env("MAKE_RELAY_URL"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: env("MAKE_RELAY_TOKEN"), method: "UPLOAD", url: `${HOST}/v1/product-images/upload`, auth: "Bearer " + tok, fileUrl, fileName, field: "imageFiles" }),
+  })
+  const text = await res.text()
+  const upstream = Number(res.headers.get("x-upstream-status") || 0)
+  let data: any
+  try { data = JSON.parse(text) } catch { data = { raw: text.slice(0, 300) } }
+  if (!upstream || upstream >= 400) throw new Error(`네이버 이미지 업로드 실패 ${upstream}: ${data?.message || data?.raw || text.slice(0, 200)}`)
+  const url = data?.images?.[0]?.url
+  if (!url) throw new Error("네이버 이미지 주소를 못 받았습니다: " + text.slice(0, 200))
+  return String(url)
+}

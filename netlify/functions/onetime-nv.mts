@@ -20,6 +20,12 @@ export default async (req: Request) => {
       const cats = all.filter((c: any) => /키위|감귤|귤|한라봉|만감/.test(String(c.wholeCategoryName)) && /과일/.test(String(c.wholeCategoryName))).map((c: any) => [c.id, c.wholeCategoryName])
       r = { origin: o, addr, cats }
     }
+    else if (q === "run") {
+      const only = (u.searchParams.get("only") || "").split(",").filter(Boolean)
+      await fetch(new URL("/.netlify/functions/onetime-nvreg-background", req.url), { method: "POST", body: JSON.stringify({ token: tok, only: only.length ? only : undefined }) })
+      r = { started: true }
+    }
+    else if (q === "status") { const { getStore } = await import("@netlify/blobs"); r = await getStore({ name: "admin-settings", consistency: "strong" }).get("nvreg", { type: "json" }) }
     else r = { error: "q?" }
   } catch (e: any) { r = { error: String(e?.message || e) } }
   const s = JSON.stringify(r)
