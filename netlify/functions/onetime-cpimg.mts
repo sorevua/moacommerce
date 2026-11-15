@@ -1,11 +1,12 @@
 // 임시: 쿠팡 유라귤에서 13.7 Brix 당도계 사진 제거 — 작업 후 삭제
 import type { Config } from "@netlify/functions"
-import { getProduct, call, normImg } from "./_lib/coupang.mts"
+import { getProduct, call, normImg, productHistory } from "./_lib/coupang.mts"
 const SP = "/v2/providers/seller_api/apis/api/v1/marketplace"
 export default async (req: Request) => {
   const u = new URL(req.url)
   const tok = Netlify.env.get("ONETIME_TOKEN") || ""
   if (!tok || u.searchParams.get("t") !== tok) return new Response("no", { status: 403 })
+  if (u.searchParams.get("h") === "1") { const h: any = await productHistory("16417633126"); const p2: any = await getProduct("16417633126"); return Response.json({ status: h.status, last: (h.history || []).slice(0, 3), imgs: (p2.items || []).map((i: any) => [i.itemName, (i.images || []).length]) }) }
   const p: any = await getProduct("16417633126")
   // 옵션별로 화면에서 확인한 당도계 사진 위치 (1부터): 2kg 4번째, 3kg 6번째, 5kg 6번째
   const pos: Record<string, number> = { "2kg": 4, "3kg": 6, "5kg": 6 }
