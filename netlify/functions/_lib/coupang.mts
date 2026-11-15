@@ -5,7 +5,7 @@ import { getStore } from "@netlify/blobs"
 // 서명(HMAC)은 여기서 만들고, Make는 받은 요청을 그대로 전달만 한다.
 
 const HOST = "https://api-gateway.coupang.com"
-const ID_FIELDS = "shipmentBoxId|orderId|vendorItemId|productId|sellerProductId|vendorItemPackageId|responseKey"
+const ID_FIELDS = "shipmentBoxId|orderId|vendorItemId|productId|sellerProductId|sellerProductItemId|vendorItemPackageId|responseKey|itemId"
 
 export function coupangConfigured() {
   return !!(env("COUPANG_VENDOR_ID") && env("COUPANG_ACCESS_KEY") && env("COUPANG_SECRET_KEY") && env("MAKE_RELAY_URL") && env("MAKE_RELAY_TOKEN"))
@@ -231,3 +231,91 @@ export const COURIERS: Record<string, string> = {
   DIRECT: "업체직송",
 }
 
+
+// ---------- 상품 ----------
+const SP = "/v2/providers/seller_api/apis/api/v1/marketplace"
+
+export async function listProducts(opts: { status?: string; name?: string } = {}) {
+  const out: any[] = []
+  let next = ""
+  for (let page = 0; page < 5; page++) {
+    const q = [
+      `vendorId=${vendorId()}`,
+      `maxPerPage=100`,
+      ...(next ? [`nextToken=${encodeURIComponent(next)}`] : []),
+      ...(opts.status ? [`status=${opts.status}`] : []),
+      ...(opts.name ? [`sellerProductName=${encodeURIComponent(opts.name.slice(0, 20))}`] : []),
+    ].join("&")
+    const data = await call("GET", `${SP}/seller-products`, q)
+    out.push(...(data?.data || []))
+    next = data?.nextToken || ""
+    if (!next) break
+  }
+  return out
+}
+
+export async function getProduct(sellerProductId: string) {
+  const data = await call("GET", `${SP}/seller-products/${sellerProductId}`)
+  if (!data?.data) throw new Error("상품을 찾을 수 없습니다: " + (data?.message || ""))
+  return data.data
+}
+
+export async function getInventory(vendorItemId: string) {
+  const data = await call("GET", `${SP}/vendor-items/${vendorItemId}/inventories`)
+  return data?.data || null
+}
+
+export async function changePrice(vendorItemId: string, price: number) {
+  return call("PUT", `${SP}/vendor-items/${vendorItemId}/prices/${Math.round(price)}`)
+}
+
+export async function stopSale(vendorItemId: string) {
+  return call("PUT", `${SP}/vendor-items/${vendorItemId}/sales/stop`)
+}
+
+export async function resumeSale(vendorItemId: string) {
+  return call("PUT", `${SP}/vendor-items/${vendorItemId}/sales/resume`)
+}
+
+// 배송·반품 정보는 손대지 않고, 상품명·검색어·상세페이지만 바꿔서 승인 요청
+export async function updateProductContent(sellerProductId: string, change: { displayProductName?: string; sellerProductName?: string; searchTags?: string[]; detailHtml?: string }) {
+  const p = await getProduct(sellerProductId)
+  if (change.displayProductName) p.displayProductName = change.displayProductName.slice(0, 100)
+  if (change.sellerProductName) p.sellerProductName = change.sellerProductName.slice(0, 100)
+  for (const it of p.items || []) {
+    if (change.searchTags) it.searchTags = cleanTags(change.searchTags)
+    if (change.detailHtml) it.contents = [{ contentsType: "HTML", contentDetails: [{ content: change.detailHtml, detailType: "TEXT" }] }]
+  }
+  p.requested = true
+  return call("PUT", `${SP}/seller-products`, "", p)
+}
+
+export function cleanTags(tags: string[]) {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const t of tags) {
+    const v = String(t || "").replace(/[^0-9A-Za-z가-힣\s!@#$%^&*\-+;:'.]/g, "").trim().slice(0, 20)
+    if (v && !seen.has(v)) { seen.add(v); out.push(v) }
+    if (out.length >= 20) break
+  }
+  return out
+}
+
+// 기존 상세 내용에서 이미지 주소와 글을 뽑아낸다 (AI 재작성용)
+export function extractContent(p: any) {
+  const images = new Set<string>()
+  const texts: string[] = []
+  for (const it of p.items || []) {
+    for (const im of it.images || []) { const u = im.cdnPath ? `https://image1.coupangcdn.com/image/${im.cdnPath}` : im.vendorPath; if (u) images.add(u) }
+    for (const c of it.contents || []) for (const d of c.contentDetails || []) {
+      const content = String(d.content || "")
+      if (d.detailType === "IMAGE" && /^https?:/.test(content)) images.add(content)
+      else {
+        for (const m of content.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) images.add(m[1])
+        const t = content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+        if (t) texts.push(t.slice(0, 1500))
+      }
+    }
+  }
+  return { images: [...images].slice(0, 12), text: texts.join("\n").slice(0, 3000) }
+}

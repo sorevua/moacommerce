@@ -22,6 +22,7 @@ h2{font-size:20px;letter-spacing:-.02em;margin:0 0 14px}
 h3{font-size:16px;margin:22px 0 10px}
 .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:18px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.cpchk{width:auto}
 label{display:block;font-size:13px;font-weight:600;color:var(--ink2);margin-bottom:4px}
 input,select,textarea{width:100%;border:1px solid var(--line);border-radius:7px;padding:9px 10px;background:#fff}
 textarea{min-height:90px;resize:vertical}
@@ -76,6 +77,7 @@ pre{white-space:pre-wrap;background:#f6f5f1;border-radius:8px;padding:12px;font-
     <nav>
       <button data-tab="orders" class="on">주문·발주</button>
       <button data-tab="vendors">업체·상품</button>
+      <button data-tab="coupang">쿠팡 상품</button>
       <button data-tab="settings">설정</button>
     </nav>
     <button class="btn small" id="logoutBtn">로그아웃</button>
@@ -123,6 +125,26 @@ pre{white-space:pre-wrap;background:#f6f5f1;border-radius:8px;padding:12px;font-
     <section id="tab-vendors" class="hidden">
       <div class="vlist" id="vendorList"></div>
       <div class="card" id="vendorForm"></div>
+    </section>
+
+    <!-- 쿠팡 상품 -->
+    <section id="tab-coupang" class="hidden">
+      <div class="card">
+        <h2>쿠팡 등록 상품</h2>
+        <p class="note">가격 변경·판매중지·재개는 바로 반영됩니다. 상품명·검색어·상세페이지 수정은 쿠팡 승인 후 반영되고, 배송·반품 정보는 건드리지 않습니다. 시즌이 끝나면 삭제하지 말고 [판매중지]만 누르세요.</p>
+        <div class="row" style="margin-top:12px">
+          <input id="cpq" placeholder="상품명·옵션·검색어·ID로 찾기" style="flex:1;min-width:200px">
+          <select id="cpf"><option value="">전체</option><option value="on">판매중</option><option value="off">판매중지</option><option value="wait">승인 대기·반려</option></select>
+          <button class="btn dark" id="cpRefresh">쿠팡에서 새로고침</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn small" id="cpSelAll">보이는 옵션 전체 선택</button>
+          <button class="btn small" id="cpStopSel">선택 판매중지 (시즌 종료)</button>
+          <button class="btn small" id="cpResumeSel">선택 판매재개</button>
+          <span class="note" id="cpInfo"></span>
+        </div>
+      </div>
+      <div id="cpList"></div>
     </section>
 
     <!-- 설정 -->
@@ -179,7 +201,148 @@ $$("nav button").forEach(b => b.onclick = () => {
 async function loadAll() {
   ;[VENDORS, ORDERS, SETTINGS, CP] = await Promise.all([api("vendors"), api("orders"), api("settings"), api("coupang/status").catch(() => ({ configured: false, couriers: {} }))])
   if (!currentVendorId && VENDORS[0]) currentVendorId = VENDORS[0].id
-  renderVendorSelects(); renderOrders(); renderVendors(); renderSettings()
+  renderVendorSelects(); renderOrders(); renderVendors(); renderSettings(); loadCpProducts()
+}
+
+
+// ---------- 쿠팡 상품 ----------
+let CPP = { products: [] }, cpPoll = null
+const cpSel = new Set()
+async function loadCpProducts() {
+  CPP = await api("coupang/products").catch(e => ({ products: [], error: e.message }))
+  renderCp()
+  if (CPP.running && !cpPoll) cpPoll = setInterval(async () => { CPP = await api("coupang/products"); renderCp(); if (!CPP.running) { clearInterval(cpPoll); cpPoll = null; toast("쿠팡 상품을 새로 불러왔습니다.") } }, 4000)
+}
+$("#cpRefresh").onclick = async () => {
+  await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "refresh" }) })
+  toast("쿠팡에서 불러오는 중… 상품 수에 따라 1~3분"); setTimeout(loadCpProducts, 2500)
+}
+$("#cpq").oninput = renderCp; $("#cpf").onchange = renderCp
+function supplyFor(vid) {
+  for (const v of VENDORS) for (const p of v.products || []) if (String(p.coupangItemId || "") === String(vid)) return { vendor: v.name, name: p.name, supply: Number(p.supply) }
+  return null
+}
+function cpVisible() {
+  const q = $("#cpq").value.trim().toLowerCase(), f = $("#cpf").value
+  return (CPP.products || []).filter(p => {
+    const hay = [p.sellerProductId, p.sellerProductName, p.displayProductName, ...(p.searchTags || []), ...(p.items || []).flatMap(i => [i.itemName, i.vendorItemId])].join(" ").toLowerCase()
+    if (q && !hay.includes(q)) return false
+    if (f === "on") return (p.items || []).some(i => i.onSale)
+    if (f === "off") return (p.items || []).some(i => i.onSale === false)
+    if (f === "wait") return !/승인완료|APPROVED/.test(p.status || "") || /부분/.test(p.status || "")
+    return true
+  })
+}
+function renderCp() {
+  const list = cpVisible()
+  $("#cpInfo").textContent = CPP.running ? "불러오는 중…" : CPP.error ? "오류: " + CPP.error : CPP.at ? `마지막 갱신 ${new Date(CPP.at).toLocaleString("ko-KR")} · ${list.length}/${(CPP.products || []).length}개 · 선택 ${cpSel.size}` : "아직 불러오지 않았습니다. [쿠팡에서 새로고침]을 누르세요."
+  $("#cpList").innerHTML = list.map(p => {
+    const name = p.displayProductName || p.sellerProductName
+    const items = (p.items || []).map(i => {
+      const s = supplyFor(i.vendorItemId)
+      const rec = s ? salePrice(s.supply, "쿠팡") : null
+      const fee = Number(SETTINGS.coupangFee || 0) * (1 + Number(SETTINGS.vatOnFee || 0))
+      const profit = s && i.salePrice ? Math.round(i.salePrice * (1 - fee) - s.supply - Number(SETTINGS.extraShipping || 0)) : null
+      return `<tr>
+        <td><input type="checkbox" class="cpchk" data-vid="${esc(i.vendorItemId)}" ${cpSel.has(i.vendorItemId) ? "checked" : ""}></td>
+        <td>${esc(i.itemName)}<div class="note">${esc(i.vendorItemId)}</div></td>
+        <td>${i.onSale === false ? '<span style="color:#b91c1c;font-weight:700">판매중지</span>' : i.onSale ? '<span style="color:#15803d;font-weight:700">판매중</span>' : "-"}</td>
+        <td><input class="cpprice" data-vid="${esc(i.vendorItemId)}" value="${esc(i.salePrice ?? "")}" style="width:96px" inputmode="numeric"> <button class="btn small cppbtn" data-vid="${esc(i.vendorItemId)}">변경</button>
+          ${s ? `<div class="note">공급가 ${won(s.supply)} · 추천 ${won(rec)} · 예상이익 ${profit === null ? "-" : won(profit)}</div>` : `<div class="note">공급가 미연결 (업체·상품에 옵션ID 입력)</div>`}</td>
+        <td>${i.vendorItemId ? (i.onSale === false ? `<button class="btn small cpres" data-vid="${esc(i.vendorItemId)}">판매재개</button>` : `<button class="btn small cpstop" data-vid="${esc(i.vendorItemId)}">판매중지</button>`) : ""}</td>
+      </tr>`
+    }).join("")
+    const tags = p.searchTags || []
+    return `<div class="card" data-spid="${esc(p.sellerProductId)}">
+      <div class="row" style="justify-content:space-between"><div><strong>${esc(name)}</strong> <span class="note">#${esc(p.sellerProductId)} · ${esc(p.status || "")}</span></div>
+        <button class="btn small cpedit" data-spid="${esc(p.sellerProductId)}">상품명·검색어·상세페이지 수정</button></div>
+      ${p.error ? `<div class="warn">${esc(p.error)}</div>` : ""}
+      <div class="note" style="margin:6px 0">검색어 ${tags.length}/20 ${tags.length < 10 ? "· 검색어가 적습니다" : ""} · 배송: ${esc(p.delivery?.chargeType || "-")} ${p.delivery?.charge ? won(p.delivery.charge) + "원" : ""} (변경 안 함)</div>
+      <div style="overflow-x:auto"><table><thead><tr><th></th><th>옵션</th><th>상태</th><th>판매가</th><th></th></tr></thead><tbody>${items}</tbody></table></div>
+      <div class="cpeditbox"></div>
+    </div>`
+  }).join("") || ""
+}
+async function cpItem(vid, body) { await api("coupang/items/" + vid, { method: "PUT", body: JSON.stringify(body) }) }
+$("#cpList").addEventListener("change", e => {
+  if (e.target.classList.contains("cpchk")) { e.target.checked ? cpSel.add(e.target.dataset.vid) : cpSel.delete(e.target.dataset.vid); renderCpInfoOnly() }
+})
+function renderCpInfoOnly() { const t = $("#cpInfo").textContent.replace(/ · 선택 \d+$/, ""); $("#cpInfo").textContent = t + " · 선택 " + cpSel.size }
+$("#cpList").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return
+  const vid = b.dataset.vid
+  try {
+    if (b.classList.contains("cppbtn")) {
+      const price = Number($(`.cpprice[data-vid="${vid}"]`).value.replace(/\D/g, ""))
+      if (!(price >= 100)) return toast("가격을 확인하세요.")
+      if (!confirm(`판매가를 ${won(price)}원으로 바꿀까요? 바로 반영됩니다.`)) return
+      b.disabled = true; await cpItem(vid, { action: "price", price }); toast("가격 변경 완료")
+    } else if (b.classList.contains("cpstop")) {
+      if (!confirm("이 옵션을 판매중지할까요? (삭제 아님, 언제든 재개 가능)")) return
+      b.disabled = true; await cpItem(vid, { action: "stop" }); toast("판매중지 완료")
+    } else if (b.classList.contains("cpres")) {
+      b.disabled = true; await cpItem(vid, { action: "resume" }); toast("판매재개 완료")
+    } else if (b.classList.contains("cpedit")) { return openCpEdit(b.dataset.spid) }
+    else return
+    CPP = await api("coupang/products"); renderCp()
+  } catch (err) { toast(err.message); b.disabled = false }
+})
+$("#cpSelAll").onclick = () => { cpVisible().forEach(p => (p.items || []).forEach(i => i.vendorItemId && cpSel.add(i.vendorItemId))); renderCp() }
+async function bulk(action) {
+  const ids = [...cpSel]; if (!ids.length) return toast("옵션을 먼저 선택하세요.")
+  if (!confirm(`${ids.length}개 옵션을 ${action === "stop" ? "판매중지(삭제 아님)" : "판매재개"}할까요?`)) return
+  let ok = 0, fail = []
+  for (const vid of ids) { try { await cpItem(vid, { action }); ok++ } catch (e) { fail.push(vid + ": " + e.message) } }
+  cpSel.clear(); CPP = await api("coupang/products"); renderCp()
+  toast(`${ok}개 완료${fail.length ? `, ${fail.length}개 실패` : ""}`); if (fail.length) alert(fail.join("\n"))
+}
+$("#cpStopSel").onclick = () => bulk("stop"); $("#cpResumeSel").onclick = () => bulk("resume")
+
+function openCpEdit(spid) {
+  const p = (CPP.products || []).find(x => x.sellerProductId === spid); if (!p) return
+  const box = $(`.card[data-spid="${spid}"] .cpeditbox`)
+  if (box.innerHTML) { box.innerHTML = ""; return }
+  box.innerHTML = `<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px">
+    <label>노출상품명 <span class="note">(100자 이내, 품목·산지·중량·등급 위주, 과장 표현 금지)</span><input class="e_title" value="${esc(p.displayProductName || p.sellerProductName)}"></label>
+    <label>검색어 <span class="note">(쉼표로 구분, 최대 20개·각 20자)</span><textarea class="e_tags" rows="2">${esc((p.searchTags || []).join(", "))}</textarea></label>
+    <div class="note e_tagcheck"></div>
+    <label>AI에게 줄 메모 <span class="note">(예: 당도 측정값·산지·수확일 — 사실만. 없는 수치는 AI가 쓰지 않음)</span><input class="e_notes" placeholder="예: 서귀포 남원 하우스, 2S~2L 혼합"></label>
+    <div class="row" style="margin:8px 0"><button class="btn accent small e_ai">AI 상세페이지·검색어 초안 만들기</button><span class="note e_aist"></span></div>
+    <label>상세페이지 HTML <span class="note">(비워두면 기존 상세 유지)</span><textarea class="e_html" rows="6" placeholder="AI 초안을 만들거나 직접 붙여넣기"></textarea></label>
+    <div class="note">미리보기</div><iframe class="e_prev" sandbox="" style="width:100%;height:420px;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>
+    <div class="row" style="margin-top:10px"><button class="btn dark e_save">쿠팡에 수정 요청 (승인 후 반영)</button></div>
+  </div>`
+  const tagCheck = () => {
+    const t = $(".e_tags", box).value.split(",").map(x => x.trim()).filter(Boolean)
+    const long = t.filter(x => x.length > 20), dup = t.filter((x, i) => t.indexOf(x) !== i)
+    $(".e_tagcheck", box).textContent = `${t.length}/20개` + (t.length > 20 ? " · 20개 초과분은 잘립니다" : "") + (long.length ? ` · 20자 초과: ${long.join(", ")}` : "") + (dup.length ? ` · 중복: ${dup.join(", ")}` : "")
+  }
+  const prev = () => { $(".e_prev", box).srcdoc = $(".e_html", box).value || "<p style='color:#888;font-family:sans-serif'>(기존 상세 유지)</p>" }
+  $(".e_tags", box).oninput = tagCheck; $(".e_html", box).oninput = prev; tagCheck(); prev()
+  $(".e_ai", box).onclick = async () => {
+    const st = $(".e_aist", box); st.textContent = "작성 중… (30초~1분)"
+    await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "ai", sellerProductId: spid, notes: $(".e_notes", box).value }) })
+    const t0 = Date.now()
+    const tick = async () => {
+      const r = await api("coupang/ai/" + spid).catch(() => ({}))
+      if (r.running || !r.at || new Date(r.at).getTime() < t0 - 5000) { if (Date.now() - t0 < 180000) return setTimeout(tick, 4000); st.textContent = "시간 초과. 다시 시도하세요."; return }
+      if (r.error) { st.textContent = "실패: " + r.error; return }
+      $(".e_title", box).value = r.title || $(".e_title", box).value
+      if (r.tags?.length) $(".e_tags", box).value = r.tags.join(", ")
+      $(".e_html", box).value = r.html || ""
+      tagCheck(); prev(); st.textContent = "초안 완성 — 내용 확인 후 고칠 부분 고쳐서 저장하세요. (AI 추천이며 사실 확인 필요)"
+    }
+    setTimeout(tick, 5000)
+  }
+  $(".e_save", box).onclick = async e => {
+    const tags = $(".e_tags", box).value.split(",").map(x => x.trim()).filter(Boolean)
+    if (!confirm("쿠팡에 수정 요청할까요? 승인 심사 후 반영되며, 그동안 기존 내용이 노출됩니다. 배송·반품 정보는 그대로 둡니다.")) return
+    e.target.disabled = true
+    try {
+      const r = await api("coupang/products/" + spid, { method: "PUT", body: JSON.stringify({ displayProductName: $(".e_title", box).value.trim(), searchTags: tags, detailHtml: $(".e_html", box).value.trim() }) })
+      toast(r.note || "수정 요청 완료")
+    } catch (err) { toast(err.message) } finally { e.target.disabled = false }
+  }
 }
 
 // ---------- 주문 ----------

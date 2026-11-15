@@ -2,7 +2,7 @@ import type { Config, Context } from "@netlify/functions"
 import { getStore } from "@netlify/blobs"
 import { randomUUID } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
-import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS } from "./_lib/coupang.mts"
+import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS, changePrice, stopSale, resumeSale, updateProductContent, cleanTags } from "./_lib/coupang.mts"
 
 // ---------- 저장소 ----------
 const store = (name: string) => getStore({ name, consistency: "strong" })
@@ -152,6 +152,22 @@ function buildListing(v: any, s: typeof DEFAULT_SETTINGS) {
   }
 }
 
+// ---------- 쿠팡 상품 보조 ----------
+async function logChange(entry: any) {
+  const log: any[] = ((await settingsStore().get("coupang-changes", { type: "json" })) as any[]) || []
+  log.unshift({ at: now(), ...entry })
+  await settingsStore().setJSON("coupang-changes", log.slice(0, 300))
+}
+
+function sanitizeHtml(html: string) {
+  return html
+    .replace(/<\s*(script|iframe|object|embed|style|link|meta)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
+    .replace(/<\s*(script|iframe|object|embed|link|meta)[^>]*\/?>/gi, "")
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/javascript:/gi, "")
+    .slice(0, 200000)
+}
+
 // ---------- 라우터 ----------
 export default async (req: Request, context: Context) => {
   if (!isLoggedIn(req)) return json({ error: "로그인이 필요합니다." }, 401)
@@ -286,6 +302,48 @@ export default async (req: Request, context: Context) => {
         }
         const failed = results.filter((r) => !r.succeed).map((r) => `${r.shipmentBoxId}: ${r.resultMessage || r.resultCode}`)
         return json({ ok: failed.length === 0, acknowledged: okBoxes.size, failed })
+      }
+
+      // ----- 상품 관리 -----
+      if (id === "products" && method === "GET" && !sub) {
+        return json((await settingsStore().get("coupang-products", { type: "json" })) || { products: [] })
+      }
+      if (id === "ai" && method === "GET" && sub) {
+        return json((await settingsStore().get(`ai-${sub}`, { type: "json" })) || {})
+      }
+      if (id === "items" && sub && method === "PUT") {
+        const vid = String(sub).replace(/\D/g, "")
+        const body = await req.json()
+        const cache: any = (await settingsStore().get("coupang-products", { type: "json" })) || { products: [] }
+        const touch = (patch: any) => {
+          for (const p of cache.products || []) for (const it of p.items || []) if (it.vendorItemId === vid) Object.assign(it, patch)
+        }
+        if (body.action === "price") {
+          const price = Math.round(Number(body.price) / 10) * 10
+          if (!(price >= 100)) return json({ error: "가격을 확인하세요." }, 400)
+          await changePrice(vid, price)
+          touch({ salePrice: price })
+        } else if (body.action === "stop") {
+          await stopSale(vid)
+          touch({ onSale: false })
+        } else if (body.action === "resume") {
+          await resumeSale(vid)
+          touch({ onSale: true })
+        } else return json({ error: "알 수 없는 작업" }, 400)
+        await settingsStore().setJSON("coupang-products", cache)
+        await logChange({ vendorItemId: vid, ...body })
+        return json({ ok: true })
+      }
+      if (id === "products" && sub && method === "PUT") {
+        const body = await req.json()
+        const change: any = {}
+        if (body.displayProductName) change.displayProductName = String(body.displayProductName)
+        if (Array.isArray(body.searchTags)) change.searchTags = cleanTags(body.searchTags)
+        if (body.detailHtml) change.detailHtml = sanitizeHtml(String(body.detailHtml))
+        if (!Object.keys(change).length) return json({ error: "바꿀 내용이 없습니다." }, 400)
+        const r = await updateProductContent(String(sub), change)
+        await logChange({ sellerProductId: sub, action: "content", fields: Object.keys(change) })
+        return json({ ok: true, result: r?.code || "SUCCESS", note: "쿠팡 승인 후 반영됩니다. 배송·반품 정보는 그대로입니다." })
       }
     }
 
