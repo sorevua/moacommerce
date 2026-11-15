@@ -73,6 +73,92 @@ async function refreshProducts() {
   }
 }
 
+
+// ---------- 상세페이지 디자인 테마 ----------
+const THEMES: Record<string, { name: string; main: string; deep: string; soft: string; band: string; text: string }> = {
+  citrus: { name: "감귤 오렌지", main: "#F07A13", deep: "#9A3F00", soft: "#FFE7CC", band: "#FFF7EE", text: "#2B1A0E" },
+  premium: { name: "프리미엄 다크", main: "#C8A15A", deep: "#1C1A17", soft: "#F1E6CF", band: "#F7F4EE", text: "#1C1A17" },
+  fresh: { name: "싱그러운 그린", main: "#2E8B57", deep: "#14532D", soft: "#DCF2E3", band: "#F3FAF5", text: "#16231B" },
+  berry: { name: "레드 베리", main: "#C8263F", deep: "#7A0F22", soft: "#FADADF", band: "#FFF5F6", text: "#2A0F14" },
+  clean: { name: "깔끔 화이트", main: "#222222", deep: "#111111", soft: "#EDEDED", band: "#F7F7F7", text: "#222222" },
+}
+
+function designGuide(key: string) {
+  const t = THEMES[key] || THEMES.citrus
+  const F = `'Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif`
+  return `[디자인 시스템 — 반드시 이 부품만 조합해서 만든다. 색은 아래 값만 쓴다]
+테마: ${t.name} / 포인트 ${t.main} / 진한색 ${t.deep} / 연한색 ${t.soft} / 배경띠 ${t.band} / 글자 ${t.text}
+규칙: 페이지 바탕은 흰색(#FFFFFF). 배경띠 섹션과 흰 섹션을 번갈아 쓴다. 그라데이션은 형광펜 강조에만. 회색 박스·테두리 남발 금지. 그림자는 카드에만 0 4px 16px rgba(0,0,0,.06).
+
+전체 감싸기:
+<div style="max-width:780px;margin:0 auto;background:#FFFFFF;font-family:${F};color:${t.text};line-height:1.7;word-break:keep-all">
+
+① 첫 화면(히어로):
+<div style="background:${t.deep};color:#FFFFFF;text-align:center;padding:56px 24px 0">
+  <div style="display:inline-block;border:1.5px solid ${t.main};color:${t.main};border-radius:999px;padding:6px 16px;font-size:14px;font-weight:800;letter-spacing:1px">산지직송</div>
+  <div style="font-size:16px;opacity:.8;margin-top:18px">짧은 위 문구</div>
+  <h1 style="font-size:38px;font-weight:900;letter-spacing:-1px;line-height:1.3;margin:8px 0 28px">핵심 헤드라인<br><span style="color:${t.main}">강조어</span></h1>
+  <img src="{{P1}}" style="width:100%;display:block;border-radius:20px 20px 0 0">
+</div>
+
+② 섹션 머리(모든 섹션 공통):
+<div style="text-align:center;padding:64px 24px 24px">
+  <div style="color:${t.main};font-size:13px;font-weight:800;letter-spacing:3px">POINT 01</div>
+  <h2 style="font-size:29px;font-weight:900;letter-spacing:-.5px;margin:10px 0 12px;line-height:1.35">섹션 제목</h2>
+  <p style="font-size:18px;color:#555;margin:0">한두 줄 설명</p>
+</div>
+
+③ 핵심 포인트 카드(3개를 세로로):
+<div style="background:#FFFFFF;border-radius:18px;box-shadow:0 4px 16px rgba(0,0,0,.06);padding:24px;margin:0 24px 14px;display:flex;gap:16px;align-items:flex-start">
+  <div style="flex:0 0 44px;height:44px;border-radius:50%;background:${t.main};color:#FFFFFF;font-weight:900;font-size:18px;line-height:44px;text-align:center">1</div>
+  <div><div style="font-size:21px;font-weight:800">포인트 제목</div><div style="font-size:17px;color:#555;margin-top:4px">한 줄 설명</div></div>
+</div>
+
+④ 큰 숫자 강조(메모에 근거 수치가 있을 때만):
+<div style="background:${t.band};text-align:center;padding:48px 24px">
+  <div style="font-size:16px;font-weight:700;color:${t.deep}">측정 예시</div>
+  <div style="font-size:64px;font-weight:900;color:${t.main};letter-spacing:-2px;line-height:1.1">수치<span style="font-size:28px"> 단위</span></div>
+  <div style="font-size:14px;color:#777;margin-top:8px">측정 조건 · 과일마다 차이가 있습니다</div>
+</div>
+
+⑤ 사진 + 설명:
+<div style="padding:0 24px 40px"><img src="{{P2}}" style="width:100%;display:block;border-radius:16px"><p style="font-size:16px;color:#666;text-align:center;margin:12px 0 0">사진 설명</p></div>
+
+⑥ 형광펜 강조(섹션당 1번): <span style="background:linear-gradient(transparent 58%, ${t.soft} 58%);font-weight:800">강조할 말</span>
+
+⑦ 가이드 카드(고르는 법·보관 등, 세로 목록):
+<div style="background:${t.band};padding:8px 24px 48px">
+  <div style="background:#FFFFFF;border-radius:16px;padding:22px 22px 20px;margin-top:14px;border-left:6px solid ${t.main}">
+    <div style="font-size:19px;font-weight:800;color:${t.deep}">보관</div>
+    <div style="font-size:17px;color:#444;margin-top:6px">내용</div>
+  </div>
+</div>
+
+⑧ 옵션 표:
+<table style="width:calc(100% - 48px);margin:0 24px 40px;border-collapse:collapse;font-size:17px;text-align:center">
+  <tr><th style="background:${t.deep};color:#FFFFFF;padding:14px;font-weight:800">옵션</th><th style="background:${t.deep};color:#FFFFFF;padding:14px;font-weight:800">이런 분께</th></tr>
+  <tr><td style="padding:14px;border-bottom:1px solid #EEE;font-weight:800">2kg</td><td style="padding:14px;border-bottom:1px solid #EEE">설명</td></tr>
+</table>
+
+⑨ 배송·반품 안내:
+<div style="margin:0 24px 40px;border-radius:16px;overflow:hidden;border:1px solid #EEE">
+  <div style="background:${t.deep};color:#FFFFFF;padding:14px 20px;font-size:19px;font-weight:800">배송 · 교환 · 반품 안내</div>
+  <div style="padding:16px 20px;border-bottom:1px solid #F0F0F0;font-size:16px"><strong style="color:${t.deep}">항목</strong>&nbsp; 내용</div>
+</div>
+
+⑩ 꼭 읽어 주세요: 배경 #FAFAFA, 15~16px, 회색 글씨, 점 목록.
+
+⑪ 맨 끝 판매자 소개:
+<div style="background:${t.deep};color:#FFFFFF;text-align:center;padding:48px 24px">
+  <div style="font-size:28px;font-weight:900;letter-spacing:2px">모아커머스</div>
+  <div style="width:32px;height:3px;background:${t.main};margin:14px auto"></div>
+  <p style="font-size:16px;opacity:.85;margin:0">소개 문장</p>
+</div>
+
+위 부품의 구조·크기·색을 그대로 지키고 글과 사진 번호만 바꾼다. 필요 없는 부품은 빼도 된다.
+`
+}
+
 const SYSTEM = `당신은 한국 오픈마켓(쿠팡) 신선식품 상세페이지를 10년 넘게 만든 전문 기획자 겸 카피라이터입니다.
 입력으로 상품 정보, 판매자 메모, 그리고 번호가 붙은 실제 사진들을 받습니다. 사진을 직접 보고 분석한 뒤 상세페이지를 설계하세요.
 
@@ -112,14 +198,13 @@ const SYSTEM = `당신은 한국 오픈마켓(쿠팡) 신선식품 상세페이�
 
 [HTML 규칙]
 - 이미지 주소를 직접 쓰지 않는다. 실제 사진 n번은 <img src="{{Pn}}"> 처럼 번호 표시만 쓴다(예: {{P1}}, {{P3}}). AI 연출 사진은 {{G1}}, {{G2}}. 다른 주소 금지.
-- div, h2, h3, p, ul, li, img, table, tr, td, th, strong, span, br 만 사용. 모든 스타일은 인라인 style. script/iframe/외부 CSS/웹폰트 금지.
-- 전체를 <div style="max-width:780px;margin:0 auto;font-family:sans-serif;color:#222;line-height:1.6"> 로 감싼다.
+- 레이아웃·색·글자 크기는 사용자 메시지의 [디자인 시스템]을 그대로 따른다.
+- div, h1, h2, h3, p, ul, li, img, table, tr, td, th, strong, span, br 만 사용. 모든 스타일은 인라인 style. script/iframe/외부 CSS/웹폰트 금지.
 - 글꼴: 웹폰트는 못 쓰므로 font-family:'Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif 를 전체에 지정한다.
 - 글자 위계(모바일 기준): 첫 화면 헤드라인 34~40px·font-weight:900·letter-spacing:-1px, 섹션 제목 28~30px·900, 소제목 21px·800, 본문 18~19px·400·line-height:1.7·color:#333, 보조 설명 15px·#777.
 - 강조: 핵심 단어·숫자는 <strong>과 포인트 색으로, 한 문단에 한 곳만. 가장 중요한 숫자(예: 당도 측정값)는 48px 이상 900 굵기로 크게 보여 주고 바로 아래 작은 글씨로 측정 조건·개체 차이를 붙인다. 형광펜 효과는 background:linear-gradient(transparent 60%, 연한 포인트색 60%) 로 섹션당 1회까지.
 - 섹션 구분: 섹션 제목 위에 작은 영문 라벨(예: POINT 01, 12px·letter-spacing:3px·포인트색)이나 번호 배지, 연한 배경 띠를 번갈아 써서 리듬을 만든다.
 - 이미지는 width:100%, 섹션 사이 여백 56px 이상, 가운데 정렬 위주. 흰 글씨를 진한 배경 위에 쓸 때는 대비가 충분한지 확인한다.
-- 포인트 색은 과일에 어울리는 한 가지 색만 쓰고, 배경 띠·둥근 카드·번호 배지로 구획을 나눠 전문 디자이너가 만든 것처럼 정돈한다.
 
 [검색어 규칙]
 - 구매자가 실제로 칠 만한 말: 품목명, 품종 다른 이름, 산지, 용도(선물용·가정용), 제철 표현. 다른 브랜드명·무관한 인기어 금지. 20개 이내, 각 20자 이내, 특수문자 없이.
@@ -186,6 +271,7 @@ async function aiDetail(job: any) {
         content.push({ type: "text", text: `사진 ${i + 1} {{P${i + 1}}} — ${ph.kind}${ph.caption ? ` / 설명: ${ph.caption}` : ""}` })
         if (withVision) content.push({ type: "image", source: inline[i] || { type: "url", url: ph.url } })
       })
+      content.push({ type: "text", text: designGuide(String(job.theme || "")) })
       content.push({
         type: "text",
         text: job.genImages === false || !imageGenConfigured()

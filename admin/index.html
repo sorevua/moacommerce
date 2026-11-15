@@ -389,6 +389,7 @@ async function openCpEdit(spid) {
     <h3 style="margin:14px 0 6px">② AI에게 알려줄 사실</h3>
     <textarea class="e_notes" rows="3" placeholder="사실만 적으세요. 예: 제주 유라귤(엘로향). TV 방송 출연 농가. 당도계 측정 예시 16.6 Brix(1개 측정). 2kg·3kg·5kg 박스."></textarea>
     <label style="font-weight:400;margin:6px 0"><input type="checkbox" class="e_gen" checked style="width:auto"> 실제 사진으로 부족한 컷만 AI 연출 사진 만들기 <span class="note">(최대 2장 · 자동 검수 통과분만 · OpenAI 사용료 발생 · 네이버 신선식품엔 쓰지 말 것)</span></label>
+    <label style="margin-top:8px">디자인 테마 <select class="e_theme" style="width:auto;margin-left:6px"><option value="citrus">감귤 오렌지</option><option value="premium">프리미엄 다크(선물용)</option><option value="fresh">싱그러운 그린</option><option value="berry">레드 베리(석류·딸기)</option><option value="clean">깔끔 화이트</option></select></label>
     <div class="row" style="margin:8px 0"><button class="btn accent e_ai">③ AI 전문가 상세페이지 만들기</button><span class="note e_aist"></span></div>
     <div class="e_report"></div>
     <label>노출상품명 <span class="note">(100자 이내)</span><input class="e_title" value="${esc(p.displayProductName || p.sellerProductName)}"></label>
@@ -418,6 +419,7 @@ async function openCpEdit(spid) {
   $(".e_extras", box).onclick = async e => { const b = e.target.closest(".e_exdel"); if (!b) return; extras.splice(Number(b.dataset.i), 1); await saveExtras() }
   $(".e_brand", box).value = copy.brand ?? '모아커머스 — 산지 업체와 직접 연결해 제철 과일을 보내 드립니다. 궁금한 점은 쿠팡 문의하기로 남겨 주세요.'
   $(".e_facts", box).value = copy.facts ?? "산지직송: 산지 업체가 수확한 과일을 직접 포장해 발송합니다."
+  { const n = p.displayProductName || p.sellerProductName; $(".e_theme", box).value = /석류|딸기|체리|자두/.test(n) ? "berry" : /키위|샤인|청포도|매실/.test(n) ? "fresh" : /신고배|나주배|사과/.test(n) ? "premium" : "citrus" }
   $(".e_guide", box).value = copy.guides?.[spid] ?? guideFor(p.displayProductName || p.sellerProductName)
   $(".e_ship", box).value = copy.shipping ?? `무료배송입니다.
 표기된 중량(kg)은 상자를 포함한 무게입니다.
@@ -447,7 +449,7 @@ async function openCpEdit(spid) {
     const images = $$(".e_use", box).filter(c => c.checked).map(c => c.dataset.u)
     const brand = $(".e_brand", box).value.trim(), shipping = $(".e_ship", box).value.trim(), facts = $(".e_facts", box).value.trim(), fruitGuide = $(".e_guide", box).value.trim()
     api("coupang/copy", { method: "PUT", body: JSON.stringify({ brand, shipping, facts, guide: { id: spid, text: fruitGuide } }) }).catch(() => {})
-    await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "ai", sellerProductId: spid, notes: $(".e_notes", box).value, images, extras, brand, shipping, facts, fruitGuide, genImages: gen }) })
+    await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "ai", sellerProductId: spid, notes: $(".e_notes", box).value, images, extras, brand, shipping, facts, fruitGuide, theme: $(".e_theme", box).value, genImages: gen }) })
     const t0 = Date.now()
     const tick = async () => {
       const r = await api("coupang/ai/" + spid).catch(() => ({}))
