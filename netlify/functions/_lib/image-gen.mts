@@ -1,6 +1,7 @@
 // 상세페이지에 꼭 필요한 연출 사진만 AI로 만들고, 이상한 사진은 자동으로 걸러낸다.
 // - 생성: OpenAI 이미지 편집 API (실제 상품 사진을 기준으로 연출만 바꿈)
 // - 검수: Claude가 기준 사진과 생성 사진을 함께 보고 점수·탈락 사유를 판단
+import { aiCreate } from "./ai.mts"
 import Anthropic from "@anthropic-ai/sdk"
 import { getStore } from "@netlify/blobs"
 import { randomUUID } from "node:crypto"
@@ -78,7 +79,7 @@ const CHECK = `당신은 쿠팡 신선식품 상세페이지 사진을 검수하
 반드시 아래 JSON 한 줄만 출력: {"score": 0~10 정수, "pass": true/false, "reasons": "한국어 한두 문장"}`
 
 async function checkImage(client: Anthropic, ref: { b64: string; type: string }, genB64: string, what: string) {
-  const msg: any = await client.messages.create({
+  const msg: any = await aiCreate(client, {
     model: process.env.AI_MODEL || "claude-sonnet-5-5",
     max_tokens: 400,
     system: CHECK,

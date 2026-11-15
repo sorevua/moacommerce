@@ -1,5 +1,6 @@
 // 오래 걸리는 작업(쿠팡 상품 전체 새로고침, AI 상세페이지 초안)을 백그라운드로 처리한다.
 // 결과는 Blobs(admin-settings)에 저장하고, 관리자 화면이 주기적으로 읽어 간다.
+import { aiCreate } from "./_lib/ai.mts"
 import { getStore } from "@netlify/blobs"
 import Anthropic from "@anthropic-ai/sdk"
 import { createHash } from "node:crypto"
@@ -235,7 +236,7 @@ async function aiDetail(job: any) {
       throw new Error("Netlify AI Gateway가 켜져 있지 않습니다. (Netlify 크레딧 요금제에서만 동작)")
     const p = await getProduct(job.sellerProductId)
     const c = extractContent(p)
-    const existing: string[] = (Array.isArray(job.images) ? job.images : c.images).filter((u: string) => c.images.includes(u)).slice(0, 16)
+    const existing: string[] = (Array.isArray(job.images) ? job.images : c.images).filter((u: string) => c.images.includes(u)).slice(0, 12)
     const extras: any[] = (Array.isArray(job.extras) ? job.extras : []).filter((e: any) => /^https:\/\/[^\s"'<>]+\/img\/[a-f0-9-]{36}\.jpg$/.test(String(e?.url || ""))).slice(0, 6)
     const photos = [
       ...extras.map((e) => ({ url: e.url, kind: "판매자가 추가한 사진(반드시 사용)", caption: String(e.caption || "") })),
@@ -283,7 +284,7 @@ async function aiDetail(job: any) {
     }
     const client = new Anthropic()
     const ask = (withVision: boolean) =>
-      client.messages.create({
+      aiCreate(client, {
         model: process.env.AI_MODEL || "claude-sonnet-5-5",
         max_tokens: 10000,
         system: SYSTEM,
@@ -449,7 +450,7 @@ async function parseLoose(text: string, client?: Anthropic): Promise<any> {
   const tries = [raw, raw.replace(/,\s*([\]}])/g, "$1"), raw.replace(/,\s*([\]}])/g, "$1").replace(/[\u201c\u201d]/g, '\\"')]
   for (const t of tries) { try { return JSON.parse(t) } catch {} }
   if (!client) throw new Error("AI 응답 형식 오류")
-  const fix: any = await client.messages.create({
+  const fix: any = await aiCreate(client, {
     model: process.env.AI_MODEL || "claude-sonnet-5-5",
     max_tokens: 8000,
     system: "깨진 JSON을 받아 문법만 고쳐 올바른 JSON으로 돌려줍니다. 문자열 안의 큰따옴표는 \\\" 로 이스케이프합니다. 내용은 한 글자도 바꾸지 않습니다. JSON만 출력.",
@@ -468,7 +469,7 @@ async function aiDesign(job: any) {
       throw new Error("Netlify AI Gateway가 켜져 있지 않습니다.")
     const p = await getProduct(job.sellerProductId)
     const c = extractContent(p)
-    const existing: string[] = (Array.isArray(job.images) ? job.images : c.images).filter((u: string) => c.images.includes(u)).slice(0, 16)
+    const existing: string[] = (Array.isArray(job.images) ? job.images : c.images).filter((u: string) => c.images.includes(u)).slice(0, 12)
     const extras: any[] = (Array.isArray(job.extras) ? job.extras : []).filter((e: any) => /^https:\/\/[^\s"'<>]+\/img\/[a-f0-9-]{36}\.jpg$/.test(String(e?.url || ""))).slice(0, 6)
     const photos = [
       ...extras.map((e) => ({ url: e.url, kind: "판매자가 추가한 사진(반드시 사용)", caption: String(e.caption || "") })),
@@ -518,7 +519,7 @@ async function aiDesign(job: any) {
     try {
       const sc: any[] = [{ type: "text", text: "사진을 하나씩 판정하세요." }]
       photos.forEach((ph, i) => { sc.push({ type: "text", text: `사진 ${i + 1}` }, { type: "image", source: inline[i] }) })
-      const sm: any = await clientA.messages.create({
+      const sm: any = await aiCreate(clientA, {
         model: process.env.AI_MODEL || "claude-sonnet-5-5",
         max_tokens: 3000,
         system: `상품 사진 분류기입니다. 각 사진을 보고 JSON 배열만 출력합니다.
@@ -543,7 +544,7 @@ async function aiDesign(job: any) {
     })
     content.push({ type: "text", text: "출력 형식의 JSON 하나만 쓰세요." })
     const client = new Anthropic()
-    const msg: any = await client.messages.create({
+    const msg: any = await aiCreate(client, {
       model: process.env.AI_MODEL || "claude-sonnet-5-5",
       max_tokens: 6000,
       system: DESIGN_SYSTEM,
@@ -556,7 +557,7 @@ async function aiDesign(job: any) {
     // 맞춤법·띄어쓰기 교정 (사실·숫자는 그대로)
     const proofFixes: string[] = []
     try {
-      const pr: any = await client.messages.create({
+      const pr: any = await aiCreate(client, {
         model: process.env.AI_MODEL || "claude-sonnet-5-5",
         max_tokens: 6000,
         system: `당신은 한국어 교정 전문가입니다. 상세페이지 문구 JSON을 받아 맞춤법·띄어쓰기·오타·어색한 표현만 고칩니다.
@@ -627,7 +628,7 @@ async function verifyImages(job: any) {
         content.push({ type: "text", text: `이미지 ${i + k + 1}` }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } })
       }
       content.push({ type: "text", text: "각 이미지의 글자를 한 글자씩 읽고 검사하세요." })
-      const msg: any = await client.messages.create({
+      const msg: any = await aiCreate(client, {
         model: process.env.AI_MODEL || "claude-sonnet-5-5",
         max_tokens: 3000,
         system: `당신은 한국어 상세페이지 최종 검수자입니다. 이미지에 보이는 모든 글자를 정확히 읽고 문제를 찾습니다.
