@@ -19,6 +19,17 @@ function pickBase(prices: number[]) {
   return s.find(ok) ?? s[Math.floor(s.length / 2)]
 }
 
+// 네이버 옵션가는 기준가의 ±50% 안이어야 한다 → 안 되면 상품을 나눈다 (기준가는 실제 옵션 가격 중 하나)
+function groupByPrice(items: any[]) {
+  const sorted = [...items].sort((a, b) => Number(a.salePrice) - Number(b.salePrice))
+  const groups: any[][] = []
+  let cur: any[] = []
+  const valid = (g: any[]) => g.some((b) => g.every((x) => Number(x.salePrice) <= Number(b.salePrice) * 1.5 && Number(x.salePrice) >= Number(b.salePrice) * 0.5))
+  for (const it of sorted) { if (valid([...cur, it])) cur.push(it); else { groups.push(cur); cur = [it] } }
+  if (cur.length) groups.push(cur)
+  return groups
+}
+
 async function originCode(region: string) {
   try {
     const r: any = await ncall("GET", "/v1/product-origin-areas")
@@ -71,16 +82,23 @@ export default async (req: Request) => {
         else throw new Error(`네이버 판매자 주소록에 '${j.addrNew.name}' 주소가 없습니다`)
       }
       // 옵션·가격
-      const prices = items.map((i: any) => Number(i.salePrice))
+      const groups = groupByPrice(items)
+      if (groups.length > 1) L.push(`옵션 가격 차이가 커서 ${groups.length}개 상품으로 나눠 등록`)
+      log.items[j.key].products = []
+      for (const g of groups) {
+      const gi = g
+      const prices = gi.map((i: any) => Number(i.salePrice))
       const base = pickBase(prices)
       const o = JSON.parse(JSON.stringify(tpl.originProduct))
       o.statusType = "SALE"
       o.leafCategoryId = j.category
-      o.name = String(p.displayProductName || p.sellerProductName).slice(0, 100)
+      const baseName = String(p.displayProductName || p.sellerProductName)
+      const kgs = [...new Set(gi.map((i: any) => (String(i.itemName).match(/\d+(?:\.\d+)?\s*kg/i) || [""])[0].replace(/\s/g, "")).filter(Boolean))]
+      o.name = (groups.length > 1 && kgs.length ? baseName.replace(/\s*\d+(?:\.\d+)?\s*kg/gi, "").trim() + " " + kgs.join(" ") : baseName).slice(0, 100)
       o.images = { representativeImage: { url: main }, optionalImages: optional.map((url) => ({ url })) }
       o.detailContent = `<div style="text-align:center">${(detail.length ? detail : [main]).map((u) => `<img src="${u}" style="width:100%;max-width:860px;display:block;margin:0 auto">`).join("")}</div>`
       o.salePrice = base
-      o.stockQuantity = items.length * 100
+      o.stockQuantity = gi.length * 100
       if (j.courier) o.deliveryInfo.deliveryCompany = j.courier
       else if (p.deliveryCompanyCode) o.deliveryInfo.deliveryCompany = p.deliveryCompanyCode === "HYUNDAI" ? "LOTTE" : p.deliveryCompanyCode
       o.deliveryInfo.claimDeliveryInfo.shippingAddressId = shipAddr
@@ -96,7 +114,7 @@ export default async (req: Request) => {
       da.optionInfo = {
         optionCombinationSortType: "CREATE",
         optionCombinationGroupNames: { optionGroupName1: "옵션 선택" },
-        optionCombinations: items.map((i: any) => ({ stockQuantity: 100, price: Number(i.salePrice) - base, usable: true, optionName1: String(i.itemName).slice(0, 25) })),
+        optionCombinations: gi.map((i: any) => ({ stockQuantity: 100, price: Number(i.salePrice) - base, usable: true, optionName1: String(i.itemName).slice(0, 25) })),
         useStockManagement: true,
       }
       const f = da.productInfoProvidedNotice.food
@@ -110,12 +128,21 @@ export default async (req: Request) => {
         adCaution: "신선 농산물 특성상 크기·모양·색상·당도에 차이가 있을 수 있습니다. 파손·변질 시 수령 후 24시간 이내 사진과 함께 문의해 주세요.",
       })
       void kg
-      L.push(`네이버 등록 요청… (기준가 ${base.toLocaleString()}원)`); await save()
-      const r: any = await ncall("POST", "/v2/products", "", { originProduct: o, smartstoreChannelProduct: { ...tpl.smartstoreChannelProduct, naverShoppingRegistration: true, channelProductDisplayStatusType: "ON" } })
+      L.push(`네이버 등록 요청: ${o.name} (기준가 ${base.toLocaleString()}원)`); await save()
+      let r: any
+      for (let tries = 0; ; tries++) {
+        try { r = await ncall("POST", "/v2/products", "", { originProduct: o, smartstoreChannelProduct: { ...tpl.smartstoreChannelProduct, naverShoppingRegistration: true, channelProductDisplayStatusType: "ON" } }); break }
+        catch (e: any) {
+          const m = String(e?.message || "")
+          const bad = m.match(/등록불가인 단어\(([^)]+)\)/)
+          if (bad && tries < 5) { const w = bad[1]; da.seoInfo.sellerTags = da.seoInfo.sellerTags.filter((t: any) => !String(t.text).includes(w)); L.push(`금지 태그 제거: ${w}`); continue }
+          throw e
+        }
+      }
+      log.items[j.key].products.push({ name: o.name, originProductNo: r?.originProductNo, channelProductNo: r?.smartstoreChannelProductNo })
+      L.push(`등록 완료 — 원상품번호 ${r?.originProductNo}`); await save()
+      }
       log.items[j.key].ok = true
-      log.items[j.key].originProductNo = r?.originProductNo
-      log.items[j.key].channelProductNo = r?.smartstoreChannelProductNo
-      L.push(`등록 완료 — 원상품번호 ${r?.originProductNo}`)
     } catch (e: any) {
       log.items[j.key].ok = false
       L.push("실패: " + String(e?.message || e).slice(0, 1500))
