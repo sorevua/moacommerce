@@ -97,7 +97,7 @@ pre{white-space:pre-wrap;background:#f6f5f1;border-radius:8px;padding:12px;font-
           <div><label>받는분 성명 *</label><input id="o_name"></div>
           <div><label>받는분 전화번호 *</label><input id="o_phone" placeholder="010-0000-0000"></div>
           <div><label>기타 연락처</label><input id="o_phone2"></div>
-          <div><label>판매가(1박스, 선택)</label><input id="o_price" type="number" min="0"></div>
+          <div><label>고객 판매가 (1박스, 자동 계산 · 수정 가능)</label><input id="o_price" type="number" min="0"><span class="note" id="o_supplyNote"></span></div>
         </div>
         <div style="margin-top:12px"><label>받는분 주소(전체) *</label><input id="o_addr"></div>
         <div style="margin-top:12px"><label>배송 요청사항</label><input id="o_msg"></div>
@@ -191,8 +191,22 @@ function renderVendorSelects() {
 function renderProductSelect() {
   const v = VENDORS.find(x => x.id === $("#o_vendor").value)
   $("#o_product").innerHTML = (v?.products || []).map(p => `<option>${esc(p.name)}</option>`).join("")
+  fillSalePrice()
+}
+function salePrice(supply, channel) {
+  const s = SETTINGS, cost = supply + Number(s.extraShipping || 0), unit = Number(s.roundUnit || 100)
+  const fee = channel === "쿠팡" ? s.coupangFee * (1 + s.vatOnFee) : channel === "네이버" ? (s.naverSalesFee + s.naverPayFee) * (1 + s.vatOnFee) : 0
+  return Math.ceil(cost / (1 - fee - s.marginRate) / unit) * unit
+}
+function supplyOf(vendorId, productName) { return VENDORS.find(v => v.id === vendorId)?.products.find(p => p.name === productName)?.supplyPrice || 0 }
+function fillSalePrice() {
+  const supply = supplyOf($("#o_vendor").value, $("#o_product").value)
+  $("#o_price").value = supply ? salePrice(supply, $("#o_channel").value) : ""
+  $("#o_supplyNote").textContent = supply ? `공급가 ${won(supply)}원 (업체 발주용)` : ""
 }
 $("#o_vendor").onchange = renderProductSelect
+$("#o_product").onchange = fillSalePrice
+$("#o_channel").onchange = fillSalePrice
 
 $("#parseBtn").onclick = () => {
   const t = $("#rawText").value
@@ -205,6 +219,7 @@ $("#parseBtn").onclick = () => {
   if (qty) $("#o_qty").value = qty[1]
   const kg = t.match(/(\d+)\s*kg/i)
   if (kg) { const opt = $$("#o_product option").find(o => o.textContent.includes(kg[1] + "kg")); if (opt) $("#o_product").value = opt.textContent }
+  fillSalePrice()
   toast("자동으로 채웠습니다. 이름과 주소를 꼭 확인하세요.")
 }
 
@@ -218,7 +233,7 @@ $("#saveOrderBtn").onclick = async () => {
   try {
     const o = await api("orders", { method: "POST", body: JSON.stringify(body) })
     ORDERS.unshift(o); renderOrders(); toast("주문을 저장했습니다.")
-    ;["#rawText", "#o_name", "#o_phone", "#o_phone2", "#o_addr", "#o_msg", "#o_price"].forEach(s => $(s).value = ""); $("#o_qty").value = 1
+    ;["#rawText", "#o_name", "#o_phone", "#o_phone2", "#o_addr", "#o_msg", "#o_price"].forEach(s => $(s).value = ""); $("#o_qty").value = 1; fillSalePrice()
   } catch (e) { toast(e.message) }
 }
 
@@ -238,7 +253,7 @@ function renderOrders() {
     <td>${esc(new Date(o.createdAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }))}</td>
     <td>${esc(o.channel)}</td>
     <td>${esc(vname(o.vendorId))}<br><span class="note">${esc(o.productName)}</span></td>
-    <td class="num">${o.qty}</td>
+    <td class="num">${o.qty}${o.salePrice ? `<br><span class="note">판매 ${won(o.salePrice * o.qty)}원</span>` : ""}</td>
     <td>${esc(o.recipientName)}<br><span class="note">${esc(o.recipientPhone)}</span></td>
     <td class="hide-m">${esc(o.recipientAddress)}${o.message ? `<br><span class="note">요청: ${esc(o.message)}</span>` : ""}</td>
     <td><select data-id="${esc(o.id)}" class="ostatus" style="width:auto;padding:4px 6px">${["접수", "발주완료", "발송", "취소"].map(s => `<option ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}</select></td>
@@ -380,8 +395,9 @@ function bindProdDel() { $$(".p_del").forEach(b => b.onclick = () => b.closest("
 
 function renderListing(l) {
   return `<h3>등록 초안 <span class="tag">${esc(l.status)}</span></h3>
-    <table><thead><tr><th>상품</th><th class="num">공급가</th><th class="num">쿠팡 판매가</th><th class="num">쿠팡 순이익</th><th class="num">네이버 판매가</th><th class="num">네이버 순이익</th></tr></thead>
-    <tbody>${l.items.map(i => `<tr><td>${esc(i.name)}</td><td class="num">${won(i.supplyPrice)}</td><td class="num"><b>${won(i.coupang)}</b></td><td class="num">${won(i.coupangProfit)}</td><td class="num"><b>${won(i.naver)}</b></td><td class="num">${won(i.naverProfit)}</td></tr>`).join("")}</tbody></table>
+    <table><thead><tr><th>상품</th><th class="num">공급가</th><th class="num">쿠팡 판매가</th><th class="num">쿠팡 순이익</th><th class="num">네이버 판매가</th><th class="num">네이버 순이익</th><th class="num">카톡·밴드 판매가</th><th class="num">카톡·밴드 순이익</th></tr></thead>
+    <tbody>${l.items.map(i => `<tr><td>${esc(i.name)}</td><td class="num">${won(i.supplyPrice)}</td><td class="num"><b>${won(i.coupang)}</b></td><td class="num">${won(i.coupangProfit)}</td><td class="num"><b>${won(i.naver)}</b></td><td class="num">${won(i.naverProfit)}</td><td class="num"><b>${i.direct ? won(i.direct) : "다시 실행"}</b></td><td class="num">${i.direct ? won(i.directProfit) : ""}</td></tr>`).join("")}</tbody></table>
+    <p class="note">공급가는 업체에 발주·입금할 때만 씁니다. 고객에게는 위 판매가로 올립니다.</p>
     <h3>상세 문구 초안</h3><pre>${esc(l.detailDraft)}</pre>
     <div class="warn">${l.checks.map(esc).join("<br>")}</div>
     <p class="note">쿠팡·네이버 API 키를 연결하면 이 초안을 승인 후 자동 등록하도록 다음 단계에서 붙입니다.</p>`

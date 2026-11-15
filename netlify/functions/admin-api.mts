@@ -90,7 +90,10 @@ function priceFor(supply: number, s: typeof DEFAULT_SETTINGS) {
   const nFee = (s.naverSalesFee + s.naverPayFee) * (1 + s.vatOnFee)
   const coupang = roundUp(cost / (1 - cFee - s.marginRate))
   const naver = roundUp(cost / (1 - nFee - s.marginRate))
+  const direct = roundUp(cost / (1 - s.marginRate)) // 카톡·밴드 직접 판매(마켓 수수료 없음)
   return {
+    direct,
+    directProfit: Math.round(direct - cost),
     coupang,
     coupangProfit: Math.round(coupang - cost - coupang * cFee),
     naver,
