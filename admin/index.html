@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex, nofollow">
 <title>관리자 | 모아커머스</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@700&display=swap">
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
 <style>
 :root{--ink:#14130f;--ink2:#3d3b35;--mute:#76736b;--line:#e4e1da;--paper:#fbfaf7;--accent:#e8501f;--ok:#1f7a44;--warn:#b45309;--bad:#c41e3a}
@@ -674,207 +675,127 @@ class PgPage {
 }
 const pgRgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})` }
 
+const PTHEME = {
+  citrus: { paper: "#f6eee0", ink: "#492a20", accent: "#b8501f", panel: "#eddcc6", muted: "#715549" },
+  berry: { paper: "#f6eee0", ink: "#492a20", accent: "#a13e27", panel: "#eddcc6", muted: "#715549" },
+  premium: { paper: "#fbf5eb", ink: "#362c24", accent: "#78502e", panel: "#eaddca", muted: "#64554b" },
+  fresh: { paper: "#f2f7ee", ink: "#204334", accent: "#27614b", panel: "#e0ebdc", muted: "#466658" },
+  clean: { paper: "#faf8f4", ink: "#2b2622", accent: "#5a4636", panel: "#ece6dc", muted: "#6b625a" },
+}
+const PG_SERIF = "'Gowun Batang', 'Nanum Myeongjo', Georgia, serif"
 async function pgRender(d, themeKey, onStep) {
-  const t = DTHEME[themeKey] || DTHEME.citrus, M = t.main, W = PG.W
-  await Promise.all([400, 500, 600, 700, 800, 900].map(w => document.fonts.load(`${w} 30px Pretendard`, "가나다 ABC 123").catch(() => {})))
+  const t = PTHEME[themeKey] || PTHEME.citrus, W = PG.W, X = 60, CW = W - 120
+  await Promise.all([...[400, 500, 600, 700, 800, 900].map(w => document.fonts.load(`${w} 30px Pretendard`, "가나다 ABC 123")), document.fonts.load(`700 40px 'Gowun Batang'`, "가나다 ABC 123")].map(p => p.catch(() => {})))
   const sc = d.scenesOut || {}, h = d.hero || {}
-  // 사진 불러오기 + 같은 사진 중복 제거
   const cache = new Map(), hashes = []
-  const load = async (u, allowDup) => {
-    if (!u) return null
-    if (cache.has(u)) return allowDup ? cache.get(u) : null
-    const im = await pgLoadImg(u); if (!im) { cache.set(u, null); return null }
-    if (!allowDup) { let hs; try { hs = pgHash(im) } catch {} ; if (hs) { if (hashes.some(x => pgDist(x, hs) <= 8)) { cache.set(u, null); return null } hashes.push(hs) } }
-    cache.set(u, im); return im
+  const load = async u => {
+    if (!u || cache.has(u)) return null
+    const im = await pgLoadImg(u); cache.set(u, im); if (!im) return null
+    let hs; try { hs = pgHash(im) } catch {}
+    if (hs) { if (hashes.some(x => pgDist(x, hs) <= 8)) return null; hashes.push(hs) }
+    return im
   }
   const heroAi = !!sc.hero
   const heroIm = (await load(sc.hero)) || (await load(h.photo))
   const proofIm = d.proof ? await load(d.proof.photo) : null
-  const ptIms = []; for (const p of d.points || []) ptIms.push(await load(p.photo))
-  const gal = []; for (const g of d.gallery || []) { const im = await load(g.photo); if (im) gal.push({ ...g, im }) }
-  const sIntro = await load(sc.intro), sOpt = await load(sc.option), sGuide = await load(sc.guide), sBrand = await load(sc.brand)
-  const pages = []
-  const push = (p, hgt) => pages.push(p.out(hgt))
-  const head = (p, y, small, big, color) => {
-    let yy = y
-    if (small) yy += p.text(small, { x: 60, y: yy, w: W - 120, size: 26, weight: 600, color: color ? pgRgba("#ffffff", .85) : "#666", align: "center", maxLines: 1 }) + 6
-    yy += p.text(big, { x: 50, y: yy, w: W - 100, size: 50, weight: 900, color: color || "#1d1d1d", align: "center", maxLines: 2, lh: 1.25 })
-    return yy - y
-  }
-  // 1. 첫 화면
-  {
-    const p = new PgPage(t.deep), H = 1000
-    if (heroIm) p.cover(heroIm, 0, 0, W, H); else p.fillTo(0, H, t.deep)
-    p.grad(0, H - 620, W, 620, [[0, pgRgba(t.deep, 0)], [.45, pgRgba(t.deep, .72)], [1, pgRgba(t.deep, .97)]])
-    if (heroAi && heroIm) p.aiTag(0, 0, W, 60)
-    // 아래에서부터 쌓는다 (글자 높이를 먼저 잰 뒤 배치)
-    const subH = h.sub ? p.text(h.sub, { x: 70, y: 0, w: W - 140, size: 25, weight: 500, lh: 1.5, maxLines: 2, measure: true }) : 0
-    const hl = p.fit(h.headline || d.title || "", W - 100, 76, 900, 2, 44), hlH = hl.lines.length * Math.round(hl.size * 1.2)
-    const eyH = h.eyebrow ? 40 : 0, bdH = h.badge ? 44 : 0
-    let y = H - 70 - subH - (subH ? 20 : 0) - hlH - (eyH ? eyH + 8 : 0) - (bdH ? bdH + 22 : 0)
-    if (h.badge) { p.pill(h.badge, W / 2, y, { size: 21, bg: M, color: "#fff" }); y += bdH + 22 }
-    if (h.eyebrow) { p.text(h.eyebrow, { x: 60, y, w: W - 120, size: 26, weight: 600, color: "rgba(255,255,255,.9)", align: "center", maxLines: 1 }); y += eyH + 8 }
-    p.text(h.headline || d.title || "", { x: 50, y, w: W - 100, size: 76, weight: 900, color: "#fff", align: "center", maxLines: 2, min: 44, lh: 1.2, mark: h.highlight ? { word: h.highlight, color: t.soft } : null }); y += hlH + 20
-    if (h.sub) p.text(h.sub, { x: 70, y, w: W - 140, size: 25, weight: 500, color: "rgba(255,255,255,.88)", align: "center", lh: 1.5, maxLines: 2 })
-    push(p, H)
-  }
-  // 2. 강점 띠 + 소개
-  {
-    const kw = (d.keywords || []).filter(Boolean).slice(0, 3)
-    if (kw.length || d.intro) {
-      const p = new PgPage("#fff"); let y = 0
-      if (kw.length) {
-        p.fillTo(0, 110, M); const cw = W / kw.length
-        kw.forEach((k, i) => { p.text(k, { x: i * cw + 10, y: 38, w: cw - 20, size: 28, weight: 800, color: "#fff", align: "center", maxLines: 1, min: 18 }); if (i) { p.x.fillStyle = "rgba(255,255,255,.35)"; p.x.fillRect(i * cw, 34, 1, 42) } })
-        y = 110
-      }
-      if (d.intro) { y += 80; p.x.fillStyle = M; p.x.fillRect(W / 2 - 22, y, 44, 4); y += 34; y += p.text(d.intro, { x: 80, y, w: W - 160, size: 29, weight: 600, color: "#333", align: "center", lh: 1.65 }); y += 80 }
-      push(p, y)
+  const shots = []
+  for (const p of d.points || []) { const im = await load(p.photo); if (im) shots.push({ im, title: p.title, caption: "" }) }
+  for (const g of d.gallery || []) { const im = await load(g.photo); if (im) shots.push({ im, title: g.title, caption: g.caption }) }
+  for (const k of ["intro", "option", "guide", "brand"]) { const im = await load(sc[k]); if (im) shots.push({ im, title: "", caption: "", ai: true }) }
+  const pages = [], push = (p, hgt) => pages.push(p.out(hgt))
+  const serif = (p, text, o) => { const keep = PG.FONT; PG.FONT = PG_SERIF; const r = p.text(text, o); PG.FONT = keep; return r }
+  const heading = (p, y, text) => { p.x.fillStyle = t.accent; p.x.fillRect(X, y, 34, 4); return 26 + serif(p, text, { x: X, y: y + 26, w: CW, size: 40, weight: 700, color: t.ink, lh: 1.35, maxLines: 2 }) + 22 }
+  // 라벨 + 내용 표 (가는 선으로 구분)
+  const rows = (p, y, list, measure) => {
+    const lw = 170, tw = CW - lw - 24
+    for (const [label, value] of list) {
+      if (!measure) { p.x.fillStyle = t.accent; p.x.globalAlpha = .45; p.x.fillRect(X, y, CW, 1); p.x.globalAlpha = 1 }
+      const lH = p.text(label, { x: X, y: y + 20, w: lw, size: 23, weight: 800, color: t.ink, lh: 1.5, measure })
+      const vH = p.text(value, { x: X + lw + 24, y: y + 20, w: tw, size: 23, weight: 400, color: t.muted, lh: 1.6, measure })
+      y += Math.max(lH, vH) + 42
     }
+    return y
   }
-  // 3. 걱정 → 답
+  // 1. 표지: 브랜드 · 제목 · 한 줄 설명 · 대표 사진
   {
-    const wr = (d.worries || []).filter(Boolean).slice(0, 4)
-    if (wr.length) {
-      const p = new PgPage(t.band); let y = 90
-      y += head(p, y, "온라인으로 과일 살 때", "이런 걱정 해 보셨나요?") + 46
-      for (const w of wr) {
-        const th = p.text(w, { x: 0, y: 0, w: W - 100 - 130, size: 26, weight: 700, lh: 1.45, measure: true }), bh = Math.max(96, th + 52)
-        p.shadowBox(50, y, W - 100, bh, 22, "#fff")
-        p.x.beginPath(); p.x.arc(100, y + bh / 2, 23, 0, 7); p.x.fillStyle = "#FDE2E2"; p.x.fill()
-        p.x.strokeStyle = "#E03131"; p.x.lineWidth = 4; p.x.lineCap = "round"; p.x.beginPath(); p.x.moveTo(92, y + bh / 2 - 8); p.x.lineTo(108, y + bh / 2 + 8); p.x.moveTo(108, y + bh / 2 - 8); p.x.lineTo(92, y + bh / 2 + 8); p.x.stroke()
-        p.text(w, { x: 144, y: y + (bh - th) / 2, w: W - 100 - 130, size: 26, weight: 700, color: "#333", lh: 1.45 })
-        y += bh + 16
-      }
-      y += 40
-      if (d.answer) { const ah = p.text(d.answer, { x: 60, y: 0, w: W - 120, size: 31, weight: 900, lh: 1.45, measure: true }); p.fillTo(y, y + ah + 84, M); p.text(d.answer, { x: 60, y: y + 42, w: W - 120, size: 31, weight: 900, color: "#fff", align: "center", lh: 1.45 }); y += ah + 84 } else y += 50
-      push(p, y)
-    }
+    const p = new PgPage(t.paper); let y = 70
+    if (d.brand?.name) y += p.text(d.brand.name, { x: X, y, w: CW, size: 24, weight: 800, color: t.accent, align: "center", maxLines: 1 }) + 22
+    y += serif(p, h.headline || d.title || "", { x: 50, y, w: W - 100, size: 64, weight: 700, color: t.ink, align: "center", lh: 1.25, maxLines: 2, min: 40 }) + 16
+    const sub = [h.eyebrow, h.sub].filter(Boolean).join(" · ")
+    if (sub) y += p.text(sub, { x: 70, y, w: W - 140, size: 26, weight: 500, color: t.muted, align: "center", lh: 1.55, maxLines: 3 }) + 10
+    if (h.badge) { y += 14; y += p.pill(h.badge, W / 2, y, { size: 20, bg: null, stroke: t.accent, color: t.accent }) + 6 }
+    y += 34
+    if (heroIm) { p.cover(heroIm, 0, y, W, 640); if (heroAi) p.aiTag(0, y, W, 640); y += 640 }
+    if (d.intro) { y += 56; y += p.text(d.intro, { x: 80, y, w: W - 160, size: 26, weight: 500, color: t.ink, align: "center", lh: 1.7 }); y += 56 }
+    push(p, y)
   }
-  // 4. 이유
+  // 2. 상품의 특징 (제목 + 설명을 빠짐없이)
   {
-    const pts = (d.points || []).filter(x => x && x.title)
-    if (pts.length) {
-      const p = new PgPage("#fff"); let y = 90
-      y += head(p, y, d.brand?.name || "", `특별한 ${pts.length}가지 이유`) + 20
-      p.x.fillStyle = M; p.x.fillRect(W / 2 - 22, y, 44, 4); y += 50
-      pts.forEach((pt, i) => {
-        const im = ptIms[i], tx = im ? 50 + 250 + 30 : 50 + 110 + 30, tw = W - 50 - tx
-        const tH = p.text(pt.title, { x: 0, y: 0, w: tw, size: 34, weight: 900, lh: 1.3, maxLines: 2, measure: true }), dH = p.text(pt.desc, { x: 0, y: 0, w: tw, size: 23, weight: 400, lh: 1.55, measure: true })
-        const textH = 36 + 14 + tH + 10 + dH, rowH = Math.max(im ? 250 : 110, textH)
-        if (i) { p.x.save(); p.x.strokeStyle = "#e3e3e3"; p.x.setLineDash([6, 6]); p.x.beginPath(); p.x.moveTo(50, y); p.x.lineTo(W - 50, y); p.x.stroke(); p.x.restore() }
+    const pts = (d.points || []).filter(x => x && (x.title || x.desc))
+    const st = d.story && (d.story.title || d.story.text) ? d.story : null
+    if (pts.length || st) {
+      const p = new PgPage(t.paper); let y = 80
+      y += heading(p, y, "상품의 특징")
+      const item = (title, desc) => {
+        p.x.fillStyle = t.accent; p.x.fillRect(X, y + 20, 20, 3)
+        if (title) y += p.text(title, { x: X + 40, y, w: CW - 40, size: 30, weight: 800, color: t.ink, lh: 1.45 })
+        if (desc) y += 4 + p.text(desc, { x: X + 40, y: y + 4, w: CW - 40, size: 24, weight: 400, color: t.muted, lh: 1.65 })
         y += 30
-        if (im) p.cover(im, 50, y + (rowH - 250) / 2, 250, 250, 22)
-        else { p.x.beginPath(); p.x.arc(105, y + rowH / 2, 55, 0, 7); p.x.fillStyle = t.soft; p.x.fill(); p.text(String(i + 1), { x: 50, y: y + rowH / 2 - 30, w: 110, size: 50, weight: 900, color: M, align: "center" }) }
-        let ty = y + (rowH - textH) / 2
-        p.font(18, 900); const pw = p.x.measureText(`POINT ${i + 1}`).width + 28; p.box(tx, ty, pw, 36, 18, M); p.x.fillStyle = "#fff"; p.x.textAlign = "left"; p.x.fillText(`POINT ${i + 1}`, tx + 14, ty + 9); ty += 50
-        ty += p.text(pt.title, { x: tx, y: ty, w: tw, size: 34, weight: 900, lh: 1.3, maxLines: 2 }) + 10
-        p.text(pt.desc, { x: tx, y: ty, w: tw, size: 23, weight: 400, color: "#555", lh: 1.55 })
-        y += rowH + 30
-      })
-      push(p, y + 60)
+      }
+      pts.forEach(x => item(x.title, x.desc))
+      if (st) item([st.label, st.title].filter(Boolean).join(" — "), st.text)
+      push(p, y + 50)
     }
   }
-  // 5. 측정 근거
+  // 3. 측정 예시
   {
     const pr = d.proof
     if (pr && pr.value) {
-      const p = new PgPage(M); let y = 90
-      y += p.text(pr.label || "측정 예시", { x: 60, y, w: W - 120, size: 29, weight: 800, color: "rgba(255,255,255,.92)", align: "center", maxLines: 2 }) + 18
-      p.font(150, 900); const vw = p.x.measureText(String(pr.value)).width; p.font(54, 900); const uw = p.x.measureText(" " + (pr.unit || "")).width
-      const sx = (W - vw - uw) / 2; p.font(150, 900); p.x.fillStyle = "#fff"; p.x.textAlign = "left"; p.x.fillText(String(pr.value), sx, y); p.font(54, 900); p.x.fillText(" " + (pr.unit || ""), sx + vw, y + 84); y += 170
-      if (proofIm) { p.box(96, y + 16, W - 192, 600, 30, "#fff"); p.cover(proofIm, 104, y + 24, W - 208, 584, 24); y += 640 }
-      y += 14 + p.text(pr.note, { x: 70, y: y + 14, w: W - 140, size: 21, weight: 500, color: "rgba(255,255,255,.9)", align: "center", lh: 1.6 })
+      const p = new PgPage(t.panel); let y = 80
+      y += heading(p, y, pr.label || "측정 예시")
+      if (proofIm) { p.cover(proofIm, X, y, CW, 560); y += 590 }
+      PG.FONT = PG_SERIF; p.font(120, 700); const vw = p.x.measureText(String(pr.value)).width; p.font(44, 700); const uw = p.x.measureText(" " + (pr.unit || "")).width
+      const sx = (W - vw - uw) / 2; p.font(120, 700); p.x.fillStyle = t.accent; p.x.textAlign = "left"; p.x.fillText(String(pr.value), sx, y); p.font(44, 700); p.x.fillText(" " + (pr.unit || ""), sx + vw, y + 64)
+      PG.FONT = "Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif"; y += 150
+      y += p.text(pr.note, { x: 70, y, w: W - 140, size: 22, weight: 500, color: t.muted, align: "center", lh: 1.6 })
       push(p, y + 80)
     }
   }
-  // 6. 스토리
-  {
-    const st = d.story
-    if (st && (st.title || st.text)) {
-      const p = new PgPage(t.deep); let y = 0
-      if (sIntro) { p.cover(sIntro, 0, 0, W, 640); p.grad(0, 340, W, 300, [[0, pgRgba(t.deep, 0)], [1, t.deep]]); p.aiTag(0, 0, W, 60); y = 600 } else y = 100
-      if (st.label) y += p.pill(st.label, W / 2, y, { size: 21, bg: M, color: "#fff" }) + 26
-      y += p.text(st.title, { x: 60, y, w: W - 120, size: 52, weight: 900, color: "#fff", align: "center", lh: 1.25, maxLines: 2 }) + 18
-      y += p.text(st.text, { x: 80, y, w: W - 160, size: 25, weight: 400, color: "rgba(255,255,255,.85)", align: "center", lh: 1.65 })
-      push(p, y + 100)
-    }
-  }
-  // 7. 사진 (사진 아래에 글 — 사진 위에 글자를 올리지 않는다)
-  gal.forEach((g, i) => {
-    const p = new PgPage("#fff"); let y = i === 0 ? 90 : 30
-    if (i === 0) { y += head(p, y, "있는 그대로 보여 드립니다", "실제 모습") + 46 }
-    const ar = g.im.naturalHeight / g.im.naturalWidth, ph = Math.round((W - 80) * Math.min(1.25, Math.max(0.62, ar)))
-    p.cover(g.im, 40, y, W - 80, ph, 26); y += ph
-    if (g.title) y += 30 + p.text(g.title, { x: 60, y: y + 30, w: W - 120, size: 32, weight: 900, align: "center", maxLines: 2 })
-    if (g.caption) y += 10 + p.text(g.caption, { x: 70, y: y + 10, w: W - 140, size: 23, weight: 400, color: "#666", align: "center", lh: 1.55 })
-    push(p, y + (i === gal.length - 1 ? 90 : 30))
+  // 4. 사진 (사진 아래에 설명)
+  shots.forEach((g, i) => {
+    const p = new PgPage(t.paper); let y = i === 0 ? 80 : 24
+    if (i === 0) y += heading(p, y, "실제 모습")
+    const ar = g.im.naturalHeight / g.im.naturalWidth, ph = Math.round(CW * Math.min(1.2, Math.max(0.62, ar)))
+    p.cover(g.im, X, y, CW, ph); if (g.ai) p.aiTag(X, y, CW, ph); y += ph
+    if (g.title) y += 24 + p.text(g.title, { x: X, y: y + 24, w: CW, size: 28, weight: 800, color: t.ink, maxLines: 2 })
+    if (g.caption) y += 8 + p.text(g.caption, { x: X, y: y + 8, w: CW, size: 23, weight: 400, color: t.muted, lh: 1.6 })
+    push(p, y + (i === shots.length - 1 ? 80 : 24))
   })
-  // 8. 구성
+  // 5. 상품 안내 (구성 · 보관/먹는 법)
   {
-    const op = (d.options || []).filter(o => o && o.name)
-    if (op.length) {
-      const p = new PgPage("#fff"); let y = 0
-      if (sOpt) { p.cover(sOpt, 0, 0, W, 520); p.aiTag(0, 0, W, 520); y = 520 }
-      y += 90; y += head(p, y, "원하는 만큼 고르세요", "옵션 구성 안내") + 46
-      op.forEach((o, i) => {
-        const last = i === op.length - 1, nw = 230, fw = W - 80 - nw - 70
-        const fh = p.text(o.fit, { x: 0, y: 0, w: fw, size: 25, weight: 600, lh: 1.45, measure: true }), bh = Math.max(104, fh + 56)
-        p.box(40, y, W - 80, bh, 22, last ? t.band : "#fff", last ? M : "#e8e8e8", 3)
-        p.text(o.name, { x: 70, y: y + (bh - 46) / 2 - 6, w: nw - 20, size: 42, weight: 900, color: M, maxLines: 1, min: 24 })
-        p.text(o.fit, { x: 40 + nw + 30, y: y + (bh - fh) / 2, w: fw, size: 25, weight: 600, color: "#444", lh: 1.45 })
-        y += bh + 16
-      })
-      y += 14 + p.text("※ 표기된 중량은 상자를 포함한 무게입니다", { x: 60, y: y + 14, w: W - 120, size: 21, weight: 500, color: "#888", align: "center" })
-      push(p, y + 90)
+    const list = []
+    for (const o of d.options || []) if (o && o.name) list.push([o.name, o.fit || ""])
+    if (list.length) list.push(["중량 기준", "표기된 중량은 상자를 포함한 무게입니다."])
+    for (const g of d.guide || []) if (g && g.text) list.push([g.label || "안내", g.text])
+    if (list.length) {
+      const p = new PgPage(t.panel); let y = 80
+      y += heading(p, y, "상품 안내")
+      y = rows(p, y, list)
+      push(p, y + 40)
     }
   }
-  // 9. 가이드
+  // 6. 배송 · 교환 · 반품 + 꼭 읽어 주세요
   {
-    const gd = (d.guide || []).filter(g => g && g.text)
-    if (gd.length) {
-      const p = new PgPage(t.band); let y = 90
-      y += head(p, y, "받으신 순간부터", "맛있게 드시는 법") + 46
-      if (sGuide) { p.cover(sGuide, 40, y, W - 80, 440, 26); p.aiTag(40, y, W - 80, 440); y += 470 }
-      gd.forEach((g, i) => {
-        const tw = W - 80 - 34 - 52 - 22 - 34
-        const lH = p.text(g.label, { x: 0, y: 0, w: tw, size: 27, weight: 900, measure: true }), tH = p.text(g.text, { x: 0, y: 0, w: tw, size: 23, weight: 400, lh: 1.6, measure: true }), bh = lH + 8 + tH + 60
-        p.shadowBox(40, y, W - 80, bh, 22, "#fff")
-        p.box(74, y + 30, 52, 52, 14, M); p.text(String(i + 1), { x: 74, y: y + 41, w: 52, size: 26, weight: 900, color: "#fff", align: "center" })
-        p.text(g.label, { x: 148, y: y + 30, w: tw, size: 27, weight: 900 }); p.text(g.text, { x: 148, y: y + 30 + lH + 8, w: tw, size: 23, weight: 400, color: "#555", lh: 1.6 })
-        y += bh + 14
-      })
-      push(p, y + 80)
+    const list = (d.shipping || []).filter(g => g && g.text).map(g => [g.label || "안내", g.text]), nt = (d.notice || []).filter(Boolean)
+    if (list.length || nt.length) {
+      const p = new PgPage(t.paper); let y = 80
+      y += heading(p, y, "배송 · 교환 · 반품")
+      y = rows(p, y, list)
+      if (nt.length) { p.x.fillStyle = t.accent; p.x.globalAlpha = .45; p.x.fillRect(X, y, CW, 1); p.x.globalAlpha = 1; y += 26; y += p.text("꼭 읽어 주세요", { x: X, y, w: CW, size: 23, weight: 800, color: t.ink }) + 10; for (const n of nt) y += p.text("· " + n, { x: X, y, w: CW, size: 22, weight: 400, color: t.muted, lh: 1.65 }) + 6 }
+      y += 50
+      if (d.brand?.name) { p.fillTo(y, y + 400, t.panel); y += 56; y += p.text(d.brand.name, { x: X, y, w: CW, size: 30, weight: 800, color: t.accent, align: "center", maxLines: 1 }) + 12; y += p.text(d.brand.text, { x: 80, y, w: W - 160, size: 22, weight: 400, color: t.muted, align: "center", lh: 1.65 }); y += 60 }
+      push(p, y)
     }
-  }
-  // 10. 구매 전 확인
-  {
-    const sh = (d.shipping || []).filter(g => g && g.text), nt = (d.notice || []).filter(Boolean)
-    if (sh.length || nt.length) {
-      const p = new PgPage("#fff"); let y = 90
-      y += p.text("구매 전", { x: 60, y, w: W - 120, size: 28, weight: 700, color: "#666", align: "center" }) + 4
-      y += p.text("꼭 확인해 주세요", { x: 60, y, w: W - 120, size: 52, weight: 900, color: M, align: "center" }) + 44
-      const top = y, lw = 170, tw = W - 160 - lw - 24; y += 30
-      sh.forEach((g, i) => {
-        const lH = p.text(g.label, { x: 0, y: 0, w: lw, size: 24, weight: 900, lh: 1.45, measure: true }), tH = p.text(g.text, { x: 0, y: 0, w: tw, size: 23, weight: 400, lh: 1.6, measure: true })
-        if (i) { p.x.fillStyle = "#f0f0f0"; p.x.fillRect(80, y, W - 160, 1) }
-        p.text(g.label, { x: 80, y: y + 20, w: lw, size: 24, weight: 900, color: M, lh: 1.45 }); p.text(g.text, { x: 80 + lw + 24, y: y + 20, w: tw, size: 23, weight: 400, color: "#333", lh: 1.6 })
-        y += Math.max(lH, tH) + 40
-      })
-      if (nt.length) { p.x.fillStyle = "#f0f0f0"; p.x.fillRect(80, y, W - 160, 1); y += 20; for (const n of nt) y += p.text("· " + n, { x: 80, y, w: W - 160, size: 22, weight: 400, color: "#666", lh: 1.6 }) + 8 }
-      y += 22; p.box(44, top, W - 88, y - top, 26, null, M, 3, [10, 8])
-      push(p, y + 90)
-    }
-  }
-  // 11. 판매자
-  if (d.brand && d.brand.name) {
-    const p = new PgPage(t.deep); let y = 0
-    if (sBrand) { p.cover(sBrand, 0, 0, W, 460); p.grad(0, 200, W, 260, [[0, pgRgba(t.deep, 0)], [1, t.deep]]); p.aiTag(0, 0, W, 60); y = 440 } else y = 110
-    y += p.text("SELLER", { x: 60, y, w: W - 120, size: 17, weight: 800, color: M, align: "center" }) + 16
-    y += p.text(d.brand.name, { x: 60, y, w: W - 120, size: 58, weight: 900, color: "#fff", align: "center", maxLines: 1 }) + 22
-    p.x.fillStyle = M; p.x.fillRect(W / 2 - 20, y, 40, 4); y += 30
-    y += p.text(d.brand.text, { x: 80, y, w: W - 160, size: 24, weight: 400, color: "rgba(255,255,255,.85)", align: "center", lh: 1.7 })
-    push(p, y + 110)
   }
   onStep && onStep(`이미지 ${pages.length}장 완성`)
   return pages
