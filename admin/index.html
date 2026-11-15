@@ -602,6 +602,21 @@ async function openCpEdit(spid) {
       $(".e_html", box).value = urls.map(u => `<img src="${u}" style="width:100%;display:block">`).join("")
       $(".e_report", box).innerHTML = (r.warnings || []).map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("") + (d.analysis ? `<div style="background:#f0f7ff;border:1px solid #cfe2ff;border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0;white-space:pre-wrap"><strong>AI 사진 분석</strong>\n${esc(d.analysis)}</div>` : "")
       tagCheck(); prev()
+      if ((r.proofFixes || []).length) $(".e_report", box).innerHTML += `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0"><strong>맞춤법 자동 교정 ${r.proofFixes.length}건</strong>${r.proofFixes.map(x => `<div>✏ ${esc(x)}</div>`).join("")}</div>`
+      st.textContent = "완성된 이미지의 글자를 AI가 한 글자씩 검사하는 중…"
+      box._verify = null
+      await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "verify", sellerProductId: spid, urls, intended: designText(d) }) })
+      const v0 = Date.now(); let v = {}
+      while (Date.now() - v0 < 300000) {
+        await new Promise(ok => setTimeout(ok, 4000))
+        v = await api("coupang/verify/" + spid).catch(() => ({}))
+        if (!v.running && v.at && new Date(v.at).getTime() >= v0 - 5000) break
+      }
+      const bad = (v.results || []).filter(x => !x.ok)
+      box._verify = v.error ? { error: v.error } : { bad }
+      $(".e_report", box).innerHTML += v.error ? `<div class="warn">⚠ 글자 검사 실패: ${esc(v.error)} — 미리보기에서 글자를 직접 확인하세요.</div>`
+        : `<div style="background:${bad.length ? "#fef2f2" : "#f0fdf4"};border:1px solid ${bad.length ? "#fecaca" : "#bbf7d0"};border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0"><strong>이미지 글자 검사</strong> ${bad.length ? `— 문제 ${bad.length}장 (다시 만들기 권장)` : `— ${(v.results || []).length}장 모두 이상 없음 ✅`}${bad.map(x => `<div>❌ 이미지 ${x.image}: ${esc((x.problems || []).join(" / "))}</div>`).join("")}</div>`
+      runCheck()
       st.textContent = `완성 — 이미지 ${urls.length}장. 테마를 바꾸고 다시 누르면 다른 색으로 만들어집니다.`
     } catch (err) { st.textContent = "실패: " + err.message } finally { btn.disabled = false }
   }
@@ -630,6 +645,7 @@ async function openCpEdit(spid) {
     const tags = $(".e_tags", box).value.split(",").map(x => x.trim()).filter(Boolean)
     const chk = runCheck()
     if (chk.errors.length) return toast("자동 점검에서 ❌ 항목을 먼저 고쳐 주세요.")
+    if (box._images && box._verify?.bad?.length && !confirm(`이미지 글자 검사에서 문제가 ${box._verify.bad.length}장 나왔습니다. 그래도 올릴까요? (다시 만들기 권장)`)) return
     if (chk.warns.length && !confirm("⚠ 확인 권장 항목이 있습니다:\n" + chk.warns.join("\n") + "\n\n그래도 진행할까요?")) return
     if (!confirm("쿠팡에 수정 요청할까요? 승인 심사 후 반영되며, 그동안 기존 내용이 노출됩니다. 배송·반품 정보는 그대로 둡니다.")) return
     e.target.disabled = true

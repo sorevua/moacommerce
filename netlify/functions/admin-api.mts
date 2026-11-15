@@ -304,6 +304,9 @@ export default async (req: Request, context: Context) => {
         return json({ ok: failed.length === 0, acknowledged: okBoxes.size, failed })
       }
 
+      if (id === "verify" && sub && method === "GET") {
+        return json((await settingsStore().get(`verify-${sub}`, { type: "json" })) || {})
+      }
       if (id === "design" && sub && method === "GET") {
         return json((await settingsStore().get(`design-${sub}`, { type: "json" })) || {})
       }

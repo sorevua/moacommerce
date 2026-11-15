@@ -486,7 +486,27 @@ async function aiDesign(job: any) {
     const text = msg.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
     const m = text.match(/\{[\s\S]*\}/)
     if (!m) throw new Error("AI 응답을 읽지 못했습니다. 다시 시도해 주세요.")
-    const d = JSON.parse(m[0])
+    let d = JSON.parse(m[0])
+    // 맞춤법·띄어쓰기 교정 (사실·숫자는 그대로)
+    const proofFixes: string[] = []
+    try {
+      const pr: any = await client.messages.create({
+        model: process.env.AI_MODEL || "claude-sonnet-5-5",
+        max_tokens: 6000,
+        system: `당신은 한국어 교정 전문가입니다. 상세페이지 문구 JSON을 받아 맞춤법·띄어쓰기·오타·어색한 표현만 고칩니다.
+- 숫자, 단위, 상품명·품종명(유라귤, 옐로향 등), 사실 내용은 절대 바꾸지 않는다. 새 내용 추가 금지.
+- photo·base·slot 값과 JSON 구조는 그대로 둔다.
+출력: {"fixed": 고친 JSON 전체, "changes": ["원래 → 고친 것", ...]} JSON 하나만.`,
+        messages: [{ role: "user", content: JSON.stringify(d) }],
+      })
+      const pt = pr.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
+      const pm = pt.match(/\{[\s\S]*\}/)
+      if (pm) {
+        const pj = JSON.parse(pm[0])
+        const nums = (o: any) => (JSON.stringify(o).match(/\d+(?:\.\d+)?/g) || []).sort().join(",")
+        if (pj.fixed && nums(pj.fixed) === nums(d)) { d = pj.fixed; proofFixes.push(...(pj.changes || []).map(String)) }
+      }
+    } catch {}
     const ph = (n: any) => (Number.isInteger(Number(n)) && photos[Number(n) - 1] ? photos[Number(n) - 1].url : "")
     if (d.hero) d.hero.photo = ph(d.hero.photo) || photos[0]?.url || ""
     if (d.proof) d.proof.photo = ph(d.proof.photo)
@@ -516,7 +536,42 @@ async function aiDesign(job: any) {
       if (Object.keys(d.scenesOut).length) warnings.push("AI 연출 사진에는 '연출 이미지' 표기가 들어갑니다. 네이버 신선식품에는 쓰지 마세요.")
     }
     delete d.scenes
-    await store().setJSON(key, { running: false, at: now(), design: d, warnings: [...new Set(warnings)] })
+    await store().setJSON(key, { running: false, at: now(), design: d, warnings: [...new Set(warnings)], proofFixes })
+  } catch (e: any) {
+    await store().setJSON(key, { running: false, at: now(), error: String(e?.message || e) })
+  }
+}
+
+// 완성된 상세 이미지의 글자를 AI가 읽어서 오타·잘림·깨짐 검사
+async function verifyImages(job: any) {
+  const key = `verify-${job.sellerProductId}`
+  await store().setJSON(key, { running: true, startedAt: now() })
+  try {
+    const urls: string[] = (job.urls || []).filter((u: string) => /^https:\/\/[^\s"'<>]+\/img\/[a-f0-9-]{36}\.jpg$/.test(u)).slice(0, 20)
+    const client = new Anthropic()
+    const results: any[] = []
+    for (let i = 0; i < urls.length; i += 4) {
+      const batch = urls.slice(i, i + 4)
+      const content: any[] = [{ type: "text", text: "의도한 문구(정답):\n" + String(job.intended || "").slice(0, 6000) }]
+      for (let k = 0; k < batch.length; k++) {
+        const r = await fetch(batch[k])
+        const b64 = Buffer.from(await r.arrayBuffer()).toString("base64")
+        content.push({ type: "text", text: `이미지 ${i + k + 1}` }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } })
+      }
+      content.push({ type: "text", text: "각 이미지의 글자를 한 글자씩 읽고 검사하세요." })
+      const msg: any = await client.messages.create({
+        model: process.env.AI_MODEL || "claude-sonnet-5-5",
+        max_tokens: 3000,
+        system: `당신은 한국어 상세페이지 최종 검수자입니다. 이미지에 보이는 모든 글자를 정확히 읽고 문제를 찾습니다.
+검사: ① 맞춤법·띄어쓰기·오타 ② 의도한 문구와 다른 글자 ③ 글자가 잘림·겹침·화면 밖으로 넘침 ④ 깨진 글자(□, 이상한 기호) ⑤ 사진 속에 AI가 만든 뭉개진 글자·가짜 로고.
+출력: JSON 배열 하나만. 이미지마다 {"image": 번호, "ok": true/false, "problems": ["무엇이 어떻게 잘못됐는지 → 올바른 표현"]}`,
+        messages: [{ role: "user", content }],
+      })
+      const t = msg.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
+      const mm = t.match(/\[[\s\S]*\]/)
+      if (mm) results.push(...JSON.parse(mm[0]))
+    }
+    await store().setJSON(key, { running: false, at: now(), results })
   } catch (e: any) {
     await store().setJSON(key, { running: false, at: now(), error: String(e?.message || e) })
   }
@@ -526,6 +581,7 @@ export default async (req: Request) => {
   if (!isLoggedIn(req)) return
   const job = await req.json().catch(() => ({}))
   if (job.type === "refresh") await refreshProducts()
+  if (job.type === "verify" && job.sellerProductId) await verifyImages(job)
   if (job.type === "design" && job.sellerProductId) await aiDesign({ ...job, origin: new URL(req.url).origin })
   if (job.type === "ai" && job.sellerProductId) await aiDetail({ ...job, origin: new URL(req.url).origin })
 }
