@@ -664,11 +664,14 @@ async function openCpEdit(spid) {
   $(".e_ship", box).value = copy.shipping ?? `무료배송입니다.
 표기된 중량(kg)은 상자를 포함한 무게입니다.
 신선식품 특성상 단순 변심에 의한 반품은 어렵습니다.
+반품 배송비는 편도 5,000원, 왕복 10,000원입니다.
 배송 중 파손이 있으면 정도에 따라 처리합니다.
 - 경파(가벼운 파손): 부분 환불
 - 중파: 부분 환불, 반품 또는 재배송
 - 완파: 반품 회수 후 환불 또는 재배송
 받으시면 바로 상자를 열어 상태를 확인해 주세요.`
+  if (!/5,000원|5000원/.test($(".e_ship", box).value)) $(".e_ship", box).value = $(".e_ship", box).value.replace(/(단순 변심[^\n]*\n?)/, "$1반품 배송비는 편도 5,000원, 왕복 10,000원입니다.\n")
+  if (p.delivery && p.delivery.returnCharge != null && Number(p.delivery.returnCharge) !== 5000) $(".e_report", box).innerHTML = `<div class="warn">⚠ 쿠팡에 등록된 반품배송비(편도)가 ${won(p.delivery.returnCharge)}원입니다. 업체 기준 5,000원과 다릅니다. WING에서 확인해 주세요.</div>`
   $(".e_toggle", box).onclick = () => $(".e_html", box).classList.toggle("hidden")
   $(".e_title", box).oninput = runCheck
   $(".e_tags", box).oninput = tagCheck; $(".e_html", box).oninput = () => { box._images = null; prev() }; tagCheck(); prev(); drawExtras()
@@ -771,7 +774,12 @@ async function openCpEdit(spid) {
     try { await runDesign() } finally { clearInterval(tick); b.disabled = false }
     if (!box._images) { st.textContent = $(".e_dst", box).textContent; return }
     st.textContent = "완성!"
-    scoreIt()
+    if (!scoreIt() && !box._retried) {
+      box._retried = true
+      st.textContent = "검사에서 고칠 곳이 나와 자동으로 한 번 더 만듭니다…"
+      return go()
+    }
+    box._retried = false
     $(".e_prev", box).scrollIntoView({ behavior: "smooth", block: "start" })
   }
   $(".e_go", box).onclick = go
