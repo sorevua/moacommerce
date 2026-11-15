@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>상세페이지 스튜디오</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@700&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
+:root{color-scheme:light;--ink:#252822;--green:#294335;--line:#e4e4db;--muted:#64685e}*{box-sizing:border-box}body{margin:0;background:#efefe8;color:var(--ink);font:14px 'Noto Sans KR',system-ui,sans-serif}button,input,textarea{font:inherit}button{cursor:pointer}header{height:76px;background:#fafaf6;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 clamp(16px,4vw,56px);gap:12px}.logo{display:flex;align-items:center;gap:12px;font-weight:800;font-size:17px;letter-spacing:-.04em}.mark{display:grid;place-items:center;width:34px;height:34px;background:var(--green);color:#fff;border-radius:10px;font:italic bold 24px Georgia}.actions{display:flex;gap:8px;align-items:center}.btn{padding:10px 15px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);font-weight:700;white-space:nowrap}.primary{background:var(--green);border-color:var(--green);color:#fff}.shell{display:grid;grid-template-columns:minmax(320px,370px) minmax(0,1fr);min-height:calc(100vh - 76px)}aside{background:#fafaf6;border-right:1px solid var(--line);padding:27px 24px 42px}h1,h2,p{margin:0}h1{font-size:24px;letter-spacing:-.055em}h2,summary{font-size:15px;font-weight:800}.intro{font-size:13px;color:var(--muted);margin:7px 0 22px}.themes{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:22px}.theme{padding:9px 3px 8px;border:1px solid var(--line);border-radius:9px;background:#fff;font-size:12px;font-weight:700}.theme[aria-pressed=true]{border-color:var(--green);box-shadow:0 0 0 1px var(--green)}.swatch{display:block;height:21px;margin:0 6px 6px;border-radius:4px;background:linear-gradient(105deg,var(--a) 65%,var(--b) 65%)}details{border-top:1px solid var(--line);padding:14px 0}summary{cursor:pointer}label.field{display:block;font-size:12px;font-weight:700;margin-top:12px}input:not([type=file]),textarea{display:block;width:100%;margin-top:5px;border-radius:7px;border:1px solid #dedfd6;background:white;padding:8px 9px;color:inherit}textarea{min-height:64px;resize:vertical}input[type=file]{display:block;width:100%;margin-top:8px;font-size:12px}input[type=file]::file-selector-button{border:1px solid var(--line);border-radius:6px;padding:6px;background:white;margin-right:6px}.small{font-size:12px;color:var(--muted)}.photo-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}.photo-row button{padding:5px 8px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:9px}main{min-width:0;padding:23px 25px 48px}.bar{display:flex;align-items:center;justify-content:space-between;gap:10px;max-width:680px;margin:0 auto 14px}.bar h2{font-size:14px}.bar .controls{display:flex;gap:5px}.control{border:0;background:transparent;color:#55594f;border-radius:6px;padding:5px 9px;font-size:12px}.control[aria-pressed=true]{background:#fff;color:#243c32;font-weight:800}.stage{max-width:680px;margin:auto;transition:max-width .2s}.stage.phone{max-width:390px}.stage canvas{width:100%;height:auto;display:block;background:#fff;box-shadow:0 14px 45px #4339281c}.mobile-tabs{display:none}.foot{margin:9px auto 0;max-width:680px;text-align:right}.status{position:fixed;bottom:18px;right:18px;background:#263b30;color:#fff;padding:10px 15px;border-radius:8px;z-index:5}.status:empty{display:none}.check{margin-top:10px;padding:10px;border-radius:7px;background:#f4ece0;color:#6f492b;font-size:12px}.check:empty{display:none}:focus-visible{outline:2px solid #457b61;outline-offset:3px}@media(max-width:720px){header{height:62px;padding:0 13px}.logo{font-size:14px;gap:7px}.mark{width:28px;height:28px;font-size:19px}.btn{padding:7px 9px;font-size:12px}.shell{display:block}.mobile-tabs{display:flex;position:sticky;top:0;z-index:2;background:#fafaf6;border-bottom:1px solid var(--line);padding:7px 13px;gap:8px}.mobile-tabs button{flex:1}.shell[data-mobile=edit] main,.shell[data-mobile=preview] aside{display:none}aside{border:0;padding:20px 16px}main{padding:14px 12px 35px}.stage{max-width:520px}}
+</style></head>
+<body><header><div class="logo"><span class="mark" aria-hidden="true">S</span> 상세페이지 스튜디오</div><div class="actions"><button class="btn" id="save">저장</button><button class="btn primary" id="download">PNG 다운로드</button></div></header>
+<div class="mobile-tabs"><button class="btn primary" id="editTab" aria-pressed="true">상품 편집</button><button class="btn" id="previewTab" aria-pressed="false">미리보기</button></div>
+<div class="shell" data-mobile="edit"><aside aria-label="상품 편집">
+<h1>상품 상세페이지</h1><p class="intro">상품 정보를 입력하고 디자인을 선택하세요.</p>
+<div class="themes" aria-label="디자인 스타일">
+<button class="theme" data-theme="farm" style="--a:#e8d3af;--b:#a74024"><span class="swatch"></span>산지직송</button>
+<button class="theme" data-theme="luxury" style="--a:#dbcbb1;--b:#3f3128"><span class="swatch"></span>프리미엄</button>
+<button class="theme" data-theme="fresh" style="--a:#dbe9dc;--b:#2b5a49"><span class="swatch"></span>미니멀</button>
+</div>
+<form id="editor">
+<details open><summary>대표 정보</summary>
+<label class="field">브랜드<input name="brand" maxlength="32"></label>
+<label class="field">상품명<textarea name="title" rows="2" maxlength="44" placeholder="예: 산지에서 보내는 가을 단감"></textarea></label>
+<label class="field">상품 한 줄 소개<textarea name="subtitle" maxlength="110" placeholder="상품의 특징을 짧게 소개하세요"></textarea></label>
+<label class="field">대표 상품 사진<input id="image" type="file" accept="image/jpeg,image/png,image/webp"></label>
+<div class="photo-row"><button type="button" class="btn" id="remove">사진 제거</button></div>
+</details>
+<details open><summary>구매 포인트</summary><div id="points"></div></details>
+<details><summary>상품 정보와 배송</summary><div class="pair">
+<label class="field">원산지<input name="origin" maxlength="48"></label><label class="field">구성·중량<input name="option" maxlength="48"></label></div>
+<label class="field">보관·사용 방법<textarea name="care" maxlength="170"></textarea></label>
+<label class="field">배송 안내<textarea name="shipping" maxlength="170"></textarea></label>
+<label class="field">추가 안내<textarea name="notes" maxlength="230" placeholder="교환·반품 조건 등"></textarea></label></details>
+</form>
+<div class="photo-row"><button class="btn" id="example">과일 예시 불러오기</button><button class="btn" id="reset">새 상품</button></div>
+<p class="check" id="check"></p>
+</aside>
+<main><div class="bar"><h2>실시간 미리보기</h2><div class="controls" aria-label="미리보기 너비"><button class="control" data-size="wide" aria-pressed="true">넓게</button><button class="control" data-size="phone" aria-pressed="false">모바일</button></div></div>
+<div class="stage"><canvas id="page" role="img" aria-label="상품 상세페이지 미리보기"></canvas></div><p class="small foot" id="dimensions"></p></main></div>
+<div class="status" role="status"></div>
+<script src="./engine.js"></script>
+<script>
+const $ = selector => document.querySelector(selector);
+const form = $('#editor');
+const canvas = $('#page');
+const example = {
+  theme:'farm', brand:'모아커머스', title:'가을을 베어 문\n아삭한 단감',
+  subtitle:'한 입 베어 물면 아삭하게.\n가을의 단맛을 그대로 담았습니다.',
+  point1:'아삭하게 씹히는 식감', desc1:'신선한 상태로 드시면 단감 특유의 단단하고 아삭한 식감을 즐길 수 있어요.',
+  point2:'산지에서 바로 출발', desc2:'선별한 단감을 상자에 담아 산지에서 발송합니다.',
+  point3:'식탁에 올리기 쉬운 과일', desc3:'깨끗하게 씻은 뒤 먹기 좋은 크기로 썰어 드세요.',
+  origin:'예시 · 국내산',option:'예시 · 2kg / 4kg',
+  care:'수령 후 상태를 확인해 주세요. 단감은 냉장 보관하고, 드시기 직전에 씻어 주세요.',
+  shipping:'예시 · 주문 확인 후 순차 발송합니다. 출고 일정은 산지 상황에 따라 달라질 수 있습니다.',
+  notes:'과일의 크기와 색은 개체마다 다를 수 있습니다.', photo:'sample', sample:true
+};
+$('#points').innerHTML = [1,2,3].map(i => `<label class="field">포인트 ${i}<input name="point${i}" maxlength="52"></label><label class="field">설명<textarea name="desc${i}" maxlength="160"></textarea></label>`).join('');
+const textFields = Array.from(form.querySelectorAll('[name]'));
+const blank = () => Object.fromEntries(textFields.map(field => [field.name,'']));
+const key = 'moa-detail-studio-v1';
+let state = {...example};
+try {
+  const saved = JSON.parse(localStorage.getItem(key));
+  if (saved && typeof saved === 'object') state = {...blank(), ...saved};
+} catch {}
+let photo = null, photoVersion = 0, statusTimer;
+const photoPath = 'persimmon.jpg';
+function toast(message) {
+  $('.status').textContent = message;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => { $('.status').textContent = ''; }, 3100);
+}
+function persist(announce = false) {
+  try {
+    localStorage.setItem(key, JSON.stringify(state));
+    if (announce) toast('이 브라우저에 저장했습니다.');
+  } catch {
+    toast('저장 공간이 부족합니다. 사진을 줄이거나 PNG를 다운로드하세요.');
+  }
+}
+function sync() {
+  for (const field of textFields) field.value = state[field.name] ?? '';
+  for (const theme of document.querySelectorAll('[data-theme]')) {
+    theme.setAttribute('aria-pressed', theme.dataset.theme === state.theme);
+  }
+}
+function loadPhoto() {
+  const version = ++photoVersion;
+  photo = null;
+  if (state.photo) {
+    const img = new Image();
+    img.onload = () => { if (version === photoVersion) { photo = img; render(); } };
+    img.onerror = () => { if (version === photoVersion) render(); };
+    img.src = state.photo === 'sample' ? photoPath : state.photo;
+  }
+  render();
+}
+function render() {
+  const {width, height} = window.DetailStudioEngine.render(canvas, state, photo);
+  canvas.setAttribute('aria-label', (state.title.trim() || '상품') + ' 상세페이지 미리보기');
+  $('#dimensions').textContent = `PNG ${width} × ${height} px`;
+  $('#check').textContent = state.sample ? '편집용 예시입니다. 판매 전 실제 상품 정보와 사진으로 교체하세요.' : '';
+}
+form.addEventListener('submit',event=>event.preventDefault());
+form.addEventListener('input',event=>{
+  const field=event.target;
+  if(!field.name) return;
+  state[field.name]=field.value;
+  render();
+});
+document.querySelectorAll('[data-theme]').forEach(button=>button.onclick=()=>{
+  state.theme=button.dataset.theme;
+  sync();
+  render();
+});
+document.querySelectorAll('[data-size]').forEach(button=>button.onclick=()=>{
+  $('.stage').classList.toggle('phone',button.dataset.size==='phone');
+  document.querySelectorAll('[data-size]').forEach(item=>item.setAttribute('aria-pressed',item===button));
+});
+let uploadVersion=0;
+$('#image').addEventListener('change',async event=>{
+  const file=event.target.files[0];
+  if(!file) return;
+  const version=++uploadVersion;
+  let source;
+  let url;
+  try {
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)) throw Error('format');
+    url=URL.createObjectURL(file);
+    source=new Image();
+    source.src=url;
+    await source.decode();
+    if(version!==uploadVersion) return;
+    const scale=Math.min(1,1400/Math.max(source.naturalWidth,source.naturalHeight));
+    const resized=document.createElement('canvas');
+    resized.width=Math.max(1,Math.round(source.naturalWidth*scale));
+    resized.height=Math.max(1,Math.round(source.naturalHeight*scale));
+    const paint=resized.getContext('2d');
+    paint.fillStyle='#fff'; paint.fillRect(0,0,resized.width,resized.height);
+    paint.drawImage(source,0,0,resized.width,resized.height);
+    state.photo=resized.toDataURL('image/jpeg',0.88);
+    loadPhoto();
+  } catch {
+    if(version===uploadVersion) toast('JPG, PNG 또는 WebP 사진을 선택해 주세요.');
+  } finally { if(url) URL.revokeObjectURL(url); }
+});
+function changeProduct(next) {
+  uploadVersion++;
+  state=next;
+  $('#image').value='';
+  sync();
+  loadPhoto();
+}
+function replaceProduct(next) {
+  if (window.confirm('현재 편집 중인 내용을 바꾸시겠어요?')) changeProduct(next);
+}
+$('#remove').onclick=()=>{
+  uploadVersion++;
+  state.photo='';
+  $('#image').value='';
+  loadPhoto();
+};
+$('#reset').onclick=()=>replaceProduct({...blank(),theme:state.theme,photo:'',sample:false});
+$('#example').onclick=()=>replaceProduct({...example});
+$('#save').onclick=()=>persist(true);
+$('#download').onclick=async()=>{
+  if (!state.title.trim()) { toast('상품명을 먼저 입력해 주세요.'); return; }
+  if (state.photo && !photo) { toast('사진이 준비되면 다시 눌러 주세요.'); return; }
+  await document.fonts.ready;
+  render();
+  canvas.toBlob(blob=>{
+    if(!blob) { toast('PNG를 만들 수 없습니다.'); return; }
+    const link=document.createElement('a');
+    const url=URL.createObjectURL(blob);
+    link.href=url;
+    link.download=(state.title.trim().replace(/[^\p{L}\p{N}]+/gu,'_')||'상품')+'_상세페이지.png';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),30000);
+  },'image/png');
+};
+function mobileTab(tab) {
+  $('.shell').dataset.mobile=tab;
+  for (const [id, current] of [['#editTab','edit'],['#previewTab','preview']]) {
+    $(id).classList.toggle('primary',tab===current);
+    $(id).setAttribute('aria-pressed',tab===current);
+  }
+  window.scrollTo(0,0);
+}
+$('#editTab').onclick=()=>mobileTab('edit');
+$('#previewTab').onclick=()=>mobileTab('preview');
+sync();
+loadPhoto();
+document.fonts.ready.then(render);
+</script></body></html>
