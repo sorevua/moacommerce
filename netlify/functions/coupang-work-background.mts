@@ -5,7 +5,7 @@ import { getStore } from "@netlify/blobs"
 import Anthropic from "@anthropic-ai/sdk"
 import { createHash } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
-import { listProducts, getProduct, getInventory, extractContent, normImg, predictCategory, categoryMeta, createProduct } from "./_lib/coupang.mts"
+import { listProducts, getProduct, getInventory, extractContent, normImg, predictCategory, categoryMeta, createProduct, outboundCourier } from "./_lib/coupang.mts"
 import { imageGenConfigured, makeShots, makeMainImage, type Shot, type ShotResult } from "./_lib/image-gen.mts"
 
 const store = () => getStore({ name: "admin-settings", consistency: "strong" })
@@ -704,6 +704,7 @@ async function createNew(job: any) {
     body.generalProductName = String(mj.generalProductName || name).slice(0, 100)
     if (mj.productGroup) body.productGroup = String(mj.productGroup)
     if (job.outboundShippingPlaceCode) body.outboundShippingPlaceCode = String(job.outboundShippingPlaceCode)
+    if (body.outboundShippingPlaceCode) { const dc = await outboundCourier(body.outboundShippingPlaceCode).catch(() => ""); if (dc) body.deliveryCompanyCode = dc }
     if (job.returnCenterCode) body.returnCenterCode = String(job.returnCenterCode)
     if (!body.brand) body.brand = String(job.brand || "모아커머스")
     if (job.returnInfo?.address) {

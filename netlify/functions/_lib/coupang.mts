@@ -356,6 +356,25 @@ export async function outboundPlaces() {
   const r = await call("GET", "/v2/providers/marketplace_openapi/apis/api/v2/vendor/shipping-place/outbound", "pageNum=1&pageSize=50")
   return r?.content || r?.data?.content || r?.data || []
 }
+// 출고지에 등록된 택배사 코드 (도서산간 배송정보 기준)
+export async function outboundCourier(placeCode: string) {
+  const list: any[] = await outboundPlaces()
+  const pl = list.find((x: any) => String(x.outboundShippingPlaceCode ?? x.shippingPlaceCode) === String(placeCode))
+  const infos: any[] = pl?.remoteInfos || []
+  const usable = infos.find((r: any) => r.usable !== false) || infos[0]
+  return usable?.deliveryCode ? String(usable.deliveryCode) : ""
+}
+// 상품의 택배사를 출고지 택배사로 맞추고 다시 승인 요청
+export async function fixDeliveryCompany(sellerProductId: string) {
+  const p = await getProduct(sellerProductId)
+  const code = await outboundCourier(p.outboundShippingPlaceCode)
+  if (!code) throw new Error("출고지 택배사를 찾지 못했습니다")
+  const before = p.deliveryCompanyCode
+  p.deliveryCompanyCode = code
+  p.requested = true
+  const r = await call("PUT", `${SP}/seller-products`, "", p)
+  return { before, after: code, result: r }
+}
 export async function createProduct(body: any) {
   return call("POST", `${SP}/seller-products`, "", body)
 }
