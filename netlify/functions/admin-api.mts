@@ -2,6 +2,7 @@ import type { Config, Context } from "@netlify/functions"
 import { getStore } from "@netlify/blobs"
 import { randomUUID } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
+import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS } from "./_lib/coupang.mts"
 
 // ---------- 저장소 ----------
 const store = (name: string) => getStore({ name, consistency: "strong" })
@@ -246,6 +247,74 @@ export default async (req: Request, context: Context) => {
         await vendors().setJSON(id, current)
         return json(current)
       }
+    }
+
+    // 쿠팡 연동
+    if (res === "coupang") {
+      if (id === "status" && method === "GET") {
+        const last = await settingsStore().get("coupang-sync", { type: "json" })
+        return json({ configured: coupangConfigured(), last, couriers: COURIERS })
+      }
+      if (!coupangConfigured()) return json({ error: "쿠팡 API 키가 아직 설정되지 않았습니다." }, 400)
+      if (id === "sync" && method === "POST") {
+        try {
+          return json(await syncCoupangOrders())
+        } catch (err) {
+          await recordSyncError(err)
+          throw err
+        }
+      }
+      if (id === "ack" && method === "POST") {
+        const { orderIds } = await req.json()
+        const list: any[] = (await Promise.all((orderIds || []).map((oid: string) => orders().get(oid, { type: "json" })))).filter(
+          (o: any) => o?.market?.name === "coupang" && !o.market.acknowledged,
+        )
+        const boxes = [...new Set(list.map((o) => o.market.shipmentBoxId))]
+        if (!boxes.length) return json({ ok: true, acknowledged: 0 })
+        const results: any[] = []
+        for (let i = 0; i < boxes.length; i += 50) {
+          const r = await acknowledge(boxes.slice(i, i + 50))
+          results.push(...(r?.data?.responseList || []))
+        }
+        const okBoxes = new Set(results.filter((r) => r.succeed).map((r) => String(r.shipmentBoxId)))
+        for (const o of list) {
+          if (okBoxes.has(o.market.shipmentBoxId)) {
+            o.market.acknowledged = true
+            o.updatedAt = now()
+            await orders().setJSON(o.id, o)
+          }
+        }
+        const failed = results.filter((r) => !r.succeed).map((r) => `${r.shipmentBoxId}: ${r.resultMessage || r.resultCode}`)
+        return json({ ok: failed.length === 0, acknowledged: okBoxes.size, failed })
+      }
+    }
+
+    // 송장 등록 (쿠팡 주문이면 쿠팡에도 업로드)
+    if (res === "invoice" && method === "POST") {
+      const { orderId, courier, invoiceNumber } = await req.json()
+      const o: any = await orders().get(orderId, { type: "json" })
+      if (!o) return json({ error: "주문을 찾을 수 없습니다." }, 404)
+      const num = String(invoiceNumber || "").replace(/\D/g, "")
+      if (!courier || !num) return json({ error: "택배사와 송장번호를 입력하세요." }, 400)
+      if (o.market?.name === "coupang") {
+        if (!coupangConfigured()) return json({ error: "쿠팡 API 키가 아직 설정되지 않았습니다." }, 400)
+        if (!o.market.acknowledged) {
+          const a = await acknowledge([o.market.shipmentBoxId])
+          const r = a?.data?.responseList?.[0]
+          if (r && !r.succeed && !/INSTRUCT|상품준비중/.test(String(r.resultMessage || ""))) {
+            return json({ error: "쿠팡 상품준비중 처리 실패: " + (r.resultMessage || r.resultCode) }, 400)
+          }
+          o.market.acknowledged = true
+        }
+        const up = await uploadInvoice([{ shipmentBoxId: o.market.shipmentBoxId, orderId: o.market.orderId, vendorItemId: o.market.vendorItemId, courier, invoiceNumber: num }])
+        const r = up?.data?.responseList?.[0]
+        if (!r?.succeed) return json({ error: "쿠팡 송장 등록 실패: " + (r?.resultMessage || r?.resultCode || up?.data?.responseMessage || "알 수 없음") }, 400)
+      }
+      o.invoice = { courier, courierName: COURIERS[courier] || courier, number: num, at: now() }
+      o.status = "발송"
+      o.updatedAt = now()
+      await orders().setJSON(o.id, o)
+      return json(o)
     }
 
     // 주문

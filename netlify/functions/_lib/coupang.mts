@@ -1,0 +1,233 @@
+import { createHmac } from "node:crypto"
+import { getStore } from "@netlify/blobs"
+
+// 쿠팡 OPEN API — 고정 IP가 필요해서 Make 웹훅(eu1 고정 송신 IP)을 거쳐 호출한다.
+// 서명(HMAC)은 여기서 만들고, Make는 받은 요청을 그대로 전달만 한다.
+
+const HOST = "https://api-gateway.coupang.com"
+const ID_FIELDS = "shipmentBoxId|orderId|vendorItemId|productId|sellerProductId|vendorItemPackageId|responseKey"
+
+export function coupangConfigured() {
+  return !!(env("COUPANG_VENDOR_ID") && env("COUPANG_ACCESS_KEY") && env("COUPANG_SECRET_KEY") && env("MAKE_RELAY_URL") && env("MAKE_RELAY_TOKEN"))
+}
+
+function env(k: string) {
+  return Netlify.env.get(k) || ""
+}
+
+export function vendorId() {
+  return env("COUPANG_VENDOR_ID")
+}
+
+function signedDate() {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${String(d.getUTCFullYear()).slice(2)}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`
+}
+
+export function authorization(method: string, path: string, query: string) {
+  const dt = signedDate()
+  const sig = createHmac("sha256", env("COUPANG_SECRET_KEY")).update(dt + method + path + query).digest("hex")
+  return `CEA algorithm=HmacSHA256, access-key=${env("COUPANG_ACCESS_KEY")}, signed-date=${dt}, signature=${sig}`
+}
+
+// 큰 숫자 ID(묶음배송번호 등)가 자바스크립트 숫자 범위를 넘을 수 있어 문자열로 바꿔 읽는다
+export function parseSafe(text: string) {
+  return JSON.parse(text.replace(new RegExp(`"(${ID_FIELDS})"\\s*:\\s*(-?\\d+)`, "g"), '"$1":"$2"'))
+}
+
+// 요청 본문의 ID를 다시 숫자로 내보낸다
+function stringifyWithIds(obj: unknown) {
+  return JSON.stringify(obj).replace(new RegExp(`"(${ID_FIELDS})":"(\\d+)"`, "g"), '"$1":$2').replace(/"__num__(\d+)"/g, "$1")
+}
+
+export async function call(method: "GET" | "POST" | "PATCH" | "PUT", path: string, query = "", body?: unknown) {
+  if (!coupangConfigured()) throw new Error("쿠팡 API 키 또는 중계 설정이 없습니다.")
+  const url = HOST + path + (query ? "?" + query : "")
+  const payload = {
+    token: env("MAKE_RELAY_TOKEN"),
+    method,
+    url,
+    auth: authorization(method, path, query),
+    body: body === undefined ? "" : stringifyWithIds(body),
+  }
+  const res = await fetch(env("MAKE_RELAY_URL"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  const text = await res.text()
+  const upstream = Number(res.headers.get("x-upstream-status") || 0)
+  if (!upstream) throw new Error("중계(Make) 응답 오류: " + text.slice(0, 200))
+  let data: any = null
+  try {
+    data = parseSafe(text)
+  } catch {
+    data = { raw: text.slice(0, 500) }
+  }
+  if (upstream >= 400) {
+    const msg = data?.message || data?.raw || text.slice(0, 200)
+    throw new Error(`쿠팡 오류 ${upstream}: ${msg}`)
+  }
+  return data
+}
+
+// ---------- 주문 수집 ----------
+const kstDate = (offsetDays: number) => {
+  const d = new Date(Date.now() + 9 * 3600 * 1000 + offsetDays * 86400 * 1000)
+  return d.toISOString().slice(0, 10)
+}
+
+export async function fetchOrdersheets(status: string, fromDays = -3) {
+  const path = `/v2/providers/openapi/apis/api/v5/vendors/${vendorId()}/ordersheets`
+  const list: any[] = []
+  let next = ""
+  for (let page = 0; page < 10; page++) {
+    const q = [
+      `createdAtFrom=${kstDate(fromDays)}%2B09:00`,
+      `createdAtTo=${kstDate(0)}%2B09:00`,
+      `maxPerPage=50`,
+      `status=${status}`,
+      ...(next ? [`nextToken=${encodeURIComponent(next)}`] : []),
+    ].join("&")
+    const data = await call("GET", path, q)
+    list.push(...(data?.data || []))
+    next = data?.nextToken || ""
+    if (!next) break
+  }
+  return list
+}
+
+export function phoneFromE164(v: string | null | undefined) {
+  if (!v) return ""
+  let s = String(v).replace(/[^\d+]/g, "")
+  if (s.startsWith("+82")) s = "0" + s.slice(3)
+  if (!/^0\d{8,11}$/.test(s)) return s
+  const head = s.startsWith("02") ? 2 : /^050\d/.test(s) && s.length === 12 ? 4 : 3
+  const rest = s.slice(head)
+  return `${s.slice(0, head)}-${rest.slice(0, rest.length - 4)}-${rest.slice(-4)}`
+}
+
+const money = (m: any) => (m && typeof m === "object" ? Number(m.units || 0) : Number(m || 0))
+
+export async function syncCoupangOrders() {
+  const orders = getStore({ name: "admin-orders", consistency: "strong" })
+  const vendors = getStore({ name: "admin-vendors", consistency: "strong" })
+  const state = getStore({ name: "admin-settings", consistency: "strong" })
+
+  // 쿠팡 옵션ID → 업체·상품 매핑
+  const { blobs: vb } = await vendors.list()
+  const vlist: any[] = (await Promise.all(vb.map((b) => vendors.get(b.key, { type: "json" })))).filter(Boolean)
+  const byItem = new Map<string, { vendorId: string; productName: string }>()
+  for (const v of vlist) for (const p of v.products || []) if (p.coupangItemId) byItem.set(String(p.coupangItemId).trim(), { vendorId: v.id, productName: p.name })
+
+  const sheets = await fetchOrdersheets("ACCEPT")
+  let added = 0
+  const seenBoxes = new Set<string>()
+  for (const s of sheets) {
+    const box = String(s.shipmentBoxId)
+    seenBoxes.add(box)
+    for (const it of s.orderItems || []) {
+      const qty = Number(it.shippingCount || 0) - Number(it.cancelCount || 0) - Number(it.holdCountForCancel || 0)
+      if (qty <= 0) continue
+      const key = `coupang-${box}-${it.vendorItemId}`
+      const map = byItem.get(String(it.vendorItemId))
+      const now = new Date().toISOString()
+      const o = {
+        id: key,
+        channel: "쿠팡",
+        vendorId: map?.vendorId || "",
+        productName: map?.productName || it.vendorItemName || it.sellerProductName || "",
+        marketProductName: it.vendorItemName || "",
+        qty,
+        salePrice: money(it.salesPrice),
+        recipientName: s.receiver?.name || "",
+        recipientAddress: [s.receiver?.addr1, s.receiver?.addr2].filter(Boolean).join(" "),
+        recipientZip: s.receiver?.postCode || "",
+        recipientPhone: phoneFromE164(s.receiver?.safeNumber || s.receiver?.receiverNumber),
+        recipientPhone2: "",
+        message: s.parcelPrintMessage || "",
+        status: "접수",
+        market: {
+          name: "coupang",
+          shipmentBoxId: box,
+          orderId: String(s.orderId),
+          vendorItemId: String(it.vendorItemId),
+          status: s.status,
+          orderedAt: s.orderedAt,
+          acknowledged: false,
+          needsMapping: !map,
+        },
+        createdAt: now,
+        updatedAt: now,
+      }
+      const { modified } = await orders.setJSON(key, o, { onlyIfNew: true })
+      if (modified) added++
+    }
+  }
+
+  // 결제완료 목록에서 사라진 미처리 쿠팡 주문 → 취소 가능성 표시
+  const { blobs: ob } = await orders.list({ prefix: "coupang-" })
+  let flagged = 0
+  for (const b of ob) {
+    const o: any = await orders.get(b.key, { type: "json" })
+    if (!o || o.status !== "접수" || o.market?.acknowledged) continue
+    const gone = !seenBoxes.has(o.market?.shipmentBoxId)
+    if (gone !== !!o.market?.missingFromAccept) {
+      o.market.missingFromAccept = gone
+      o.updatedAt = new Date().toISOString()
+      await orders.setJSON(o.id, o)
+      if (gone) flagged++
+    }
+  }
+
+  const result = { at: new Date().toISOString(), ok: true, fetched: sheets.length, added, flagged }
+  await state.setJSON("coupang-sync", result)
+  return result
+}
+
+export async function recordSyncError(err: unknown) {
+  const state = getStore({ name: "admin-settings", consistency: "strong" })
+  await state.setJSON("coupang-sync", { at: new Date().toISOString(), ok: false, error: String((err as any)?.message || err) })
+}
+
+// ---------- 상품준비중 처리 ----------
+export async function acknowledge(shipmentBoxIds: string[]) {
+  const path = `/v2/providers/openapi/apis/api/v4/vendors/${vendorId()}/ordersheets/acknowledgement`
+  const body = { vendorId: vendorId(), shipmentBoxIds: shipmentBoxIds.map((id) => `__num__${id}`) }
+  return call("PATCH", path, "", body)
+}
+
+// ---------- 송장 업로드 ----------
+export async function uploadInvoice(items: { shipmentBoxId: string; orderId: string; vendorItemId: string; courier: string; invoiceNumber: string }[]) {
+  const path = `/v2/providers/openapi/apis/api/v4/vendors/${vendorId()}/orders/invoices`
+  const body = {
+    vendorId: vendorId(),
+    orderSheetInvoiceApplyDtos: items.map((i) => ({
+      shipmentBoxId: i.shipmentBoxId,
+      orderId: i.orderId,
+      vendorItemId: i.vendorItemId,
+      deliveryCompanyCode: i.courier,
+      invoiceNumber: i.invoiceNumber.replace(/\D/g, ""),
+      splitShipping: false,
+      preSplitShipped: false,
+      estimatedShippingDate: "",
+    })),
+  }
+  return call("POST", path, "", body)
+}
+
+export const COURIERS: Record<string, string> = {
+  CJGLS: "CJ대한통운",
+  HYUNDAI: "롯데택배",
+  HANJIN: "한진택배",
+  EPOST: "우체국",
+  KGB: "로젠택배",
+  KDEXP: "경동택배",
+  ILYANG: "일양택배",
+  DAESIN: "대신택배",
+  CHUNIL: "천일특송",
+  HDEXP: "합동택배",
+  DIRECT: "업체직송",
+}
+
