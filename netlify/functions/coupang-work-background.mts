@@ -789,6 +789,15 @@ async function createNew(job: any) {
     })
     body.brand = String(job.brand || "모아커머스")
     if (!body.manufacture) body.manufacture = body.brand
+    // 구매옵션(EXPOSED)/검색옵션(NONE) 구분을 붙인다 — 없으면 쿠팡이 구매옵션으로 보지 않는다
+    {
+      const mandNames = new Set(mand.map((a: any) => a.attributeTypeName))
+      const metaBy = new Map((meta?.attributes || []).map((a: any) => [a.attributeTypeName, a]))
+      for (const it of body.items) it.attributes = it.attributes.map((a: any) => {
+        const m: any = metaBy.get(a.attributeTypeName)
+        return { ...a, exposed: mandNames.has(a.attributeTypeName) || m?.exposed === "EXPOSED" ? "EXPOSED" : "NONE" }
+      })
+    }
     for (const it of body.items) {
       const miss = mand.filter((a: any) => !it.attributes.some((x: any) => x.attributeTypeName === a.attributeTypeName)).map((a: any) => a.attributeTypeName)
       if (miss.length) throw new Error(`"${it.itemName}" 필수 정보가 없습니다: ${miss.join(", ")}. 업체에 확인해서 넣어 주세요.`)
