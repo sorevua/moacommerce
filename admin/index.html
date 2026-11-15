@@ -615,11 +615,36 @@ function loadH2I() {
 }
 // ================= 상세페이지 캔버스 엔진: 글자 폭을 직접 재서 배치하므로 겹침·잘림이 생기지 않는다 =================
 const PG = { W: 780, S: 1.5, FONT: "Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif" }
+// 사진 가장자리의 흰색·단색 여백(레터박스)을 찾아 잘라낸다
+function pgTrim(im) {
+  try {
+    const w = im.naturalWidth, h = im.naturalHeight, k = Math.min(1, 400 / Math.max(w, h)), sw = Math.max(1, Math.round(w * k)), sh = Math.max(1, Math.round(h * k))
+    const c = document.createElement("canvas"); c.width = sw; c.height = sh
+    const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, 0, 0, sw, sh)
+    const d = x.getImageData(0, 0, sw, sh).data
+    const px = (i, j) => { const o = (j * sw + i) * 4; return [d[o], d[o + 1], d[o + 2]] }
+    const ref = px(0, 0), near = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) < 36
+    const rowFlat = j => { let bad = 0; for (let i = 0; i < sw; i++) if (!near(px(i, j), ref)) bad++; return bad < sw * 0.02 }
+    const colFlat = (i, t, b) => { let bad = 0; for (let j = t; j < b; j++) if (!near(px(i, j), ref)) bad++; return bad < (b - t) * 0.02 }
+    let t = 0, b = sh, l = 0, r = sw
+    while (t < b - 10 && rowFlat(t)) t++
+    while (b > t + 10 && rowFlat(b - 1)) b--
+    while (l < r - 10 && colFlat(l, t, b)) l++
+    while (r > l + 10 && colFlat(r - 1, t, b)) r--
+    if (t + (sh - b) + l + (sw - r) < 4) return im
+    if ((b - t) < sh * 0.3 || (r - l) < sw * 0.3) return im
+    const pad = 2, X = Math.round((l + pad) / k), Y = Math.round((t + pad) / k), W = Math.round((r - l - pad * 2) / k), H = Math.round((b - t - pad * 2) / k)
+    const o = document.createElement("canvas"); o.width = W; o.height = H
+    o.getContext("2d").drawImage(im, X, Y, W, H, 0, 0, W, H)
+    o.naturalWidth = W; o.naturalHeight = H; o._orig = im
+    return o
+  } catch { return im }
+}
 function pgLoadImg(u) {
   return new Promise(res => {
     if (!u) return res(null)
     const im = new Image(); let fb = false
-    im.onload = () => res(im.naturalWidth ? im : null)
+    im.onload = () => res(im.naturalWidth ? pgTrim(im) : null)
     im.onerror = () => { if (!fb && isCp(u)) { fb = true; im.src = proxyUrl(u) } else res(null) }
     im.src = proxied(u)
     setTimeout(() => res(im.naturalWidth ? im : null), 25000)
@@ -627,6 +652,7 @@ function pgLoadImg(u) {
 }
 // 비슷한 사진 찾기용 지문(크기·압축이 달라도 같은 사진이면 거의 같은 값)
 function pgHash(im) {
+  im = im._orig || im
   const c = document.createElement("canvas"); c.width = 9; c.height = 8
   const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, 0, 0, 9, 8)
   const d = x.getImageData(0, 0, 9, 8).data, g = []
@@ -776,7 +802,7 @@ async function pgRender(d, themeKey, onStep) {
     if (sub) y += p.text(sub, { x: 70, y, w: W - 140, size: 26, weight: 500, color: t.muted, align: "center", lh: 1.55, maxLines: 3 }) + 10
     if (h.badge) { y += 14; y += p.pill(h.badge, W / 2, y, { size: 20, bg: null, stroke: t.accent, color: t.accent }) + 6 }
     y += 34
-    if (heroIm) { p.cover(heroIm, 0, y, W, 640); if (heroAi) p.aiTag(0, y, W, 640); y += 640 }
+    if (heroIm) { p.cover(heroIm, 0, y, W, 780); if (heroAi) p.aiTag(0, y, W, 780); y += 780 }
     if (d.intro) { y += 56; y += p.text(d.intro, { x: 80, y, w: W - 160, size: 26, weight: 500, color: t.ink, align: "center", lh: 1.7 }); y += 56 }
     push(p, y)
   }
@@ -804,7 +830,7 @@ async function pgRender(d, themeKey, onStep) {
     if (pr && pr.value) {
       const p = new PgPage(t.panel); let y = 80
       y += heading(p, y, pr.label || "측정 예시")
-      if (proofIm) { p.cover(proofIm, X, y, CW, 560); y += 590 }
+      if (proofIm) { p.cover(proofIm, 0, y, W, 680); y += 720 }
       PG.FONT = PG_SERIF; p.font(120, 700); const vw = p.x.measureText(String(pr.value)).width; p.font(44, 700); const uw = p.x.measureText(" " + (pr.unit || "")).width
       const sx = (W - vw - uw) / 2; p.font(120, 700); p.x.fillStyle = t.accent; p.x.textAlign = "left"; p.x.fillText(String(pr.value), sx, y); p.font(44, 700); p.x.fillText(" " + (pr.unit || ""), sx + vw, y + 64)
       PG.FONT = "Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif"; y += 150
@@ -816,8 +842,8 @@ async function pgRender(d, themeKey, onStep) {
   shots.forEach((g, i) => {
     const p = new PgPage(t.paper); let y = i === 0 ? 80 : 24
     if (i === 0) y += heading(p, y, "실제 모습")
-    const ar = g.im.naturalHeight / g.im.naturalWidth, ph = Math.round(CW * Math.min(1.2, Math.max(0.62, ar)))
-    p.cover(g.im, X, y, CW, ph); if (g.ai) p.aiTag(X, y, CW, ph); y += ph
+    const ar = g.im.naturalHeight / g.im.naturalWidth, ph = Math.round(W * Math.min(1.25, Math.max(0.75, ar)))
+    p.cover(g.im, 0, y, W, ph); if (g.ai) p.aiTag(0, y, W, ph); y += ph
     if (g.title) y += 24 + p.text(g.title, { x: X, y: y + 24, w: CW, size: 28, weight: 800, color: t.ink, maxLines: 2 })
     if (g.caption) y += 8 + p.text(g.caption, { x: X, y: y + 8, w: CW, size: 23, weight: 400, color: t.muted, lh: 1.6 })
     push(p, y + (i === shots.length - 1 ? 80 : 24))
