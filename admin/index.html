@@ -309,24 +309,33 @@ async function bulk(action) {
 }
 $("#cpStopSel").onclick = () => bulk("stop"); $("#cpResumeSel").onclick = () => bulk("resume")
 
-function openCpEdit(spid) {
+async function openCpEdit(spid) {
   const p = (CPP.products || []).find(x => x.sellerProductId === spid); if (!p) return
   const box = $(`.card[data-spid="${spid}"] .cpeditbox`)
   if (box.innerHTML) { box.innerHTML = ""; return }
+  let extras = await api("coupang/extras/" + spid).catch(() => [])
+  const imgs = p.images || []
   box.innerHTML = `<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px">
-    <label>노출상품명 <span class="note">(100자 이내, 품목·산지·중량·등급 위주, 과장 표현 금지)</span><input class="e_title" value="${esc(p.displayProductName || p.sellerProductName)}"></label>
+    <h3 style="margin:0 0 6px">① 사진 고르기</h3>
+    <p class="note">AI가 사진을 직접 보고 분석합니다. 옛 문구(예: 13브릭스)가 박힌 사진처럼 쓰기 싫은 사진은 체크를 빼세요. 사진을 누르면 크게 보입니다.</p>
+    <div class="e_imgs" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${imgs.map((u, i) => `<label style="width:110px;font-weight:400;text-align:center"><a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" loading="lazy" referrerpolicy="no-referrer" style="width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a><br><input type="checkbox" class="e_use cpchk" data-u="${esc(u)}" checked> 사진 ${i + 1}</label>`).join("") || '<span class="note">등록된 사진을 찾지 못했습니다.</span>'}</div>
+    <div style="background:#f7f7f4;border-radius:8px;padding:10px;margin:8px 0">
+      <label>새 사진 추가 <span class="note">(당도계·농장·포장 등 실제 사진. AI가 알맞은 자리에 넣습니다)</span></label>
+      <input type="file" accept="image/*" class="e_img">
+      <input class="e_cap" placeholder="사진 설명 (예: 비파괴 당도계 측정 16.6 Brix · 1개 측정 예시, 과일마다 차이 있음)" style="margin-top:6px">
+      <div class="row" style="margin-top:6px"><button class="btn small e_imgadd">사진 추가</button><span class="note e_imgst"></span></div>
+      <div class="e_extras" style="margin-top:8px"></div>
+    </div>
+    <h3 style="margin:14px 0 6px">② AI에게 알려줄 사실</h3>
+    <textarea class="e_notes" rows="3" placeholder="사실만 적으세요. 예: 제주 유라귤(엘로향). TV 방송 출연 농가. 당도계 측정 예시 16.6 Brix(1개 측정). 2kg·3kg·5kg 박스."></textarea>
+    <div class="row" style="margin:8px 0"><button class="btn accent e_ai">③ AI 전문가 상세페이지 만들기</button><span class="note e_aist"></span></div>
+    <div class="e_report"></div>
+    <label>노출상품명 <span class="note">(100자 이내)</span><input class="e_title" value="${esc(p.displayProductName || p.sellerProductName)}"></label>
     <label>검색어 <span class="note">(쉼표로 구분, 최대 20개·각 20자)</span><textarea class="e_tags" rows="2">${esc((p.searchTags || []).join(", "))}</textarea></label>
     <div class="note e_tagcheck"></div>
-    <label>AI에게 줄 메모 <span class="note">(예: 당도 측정값·산지·수확일 — 사실만. 없는 수치는 AI가 쓰지 않음)</span><input class="e_notes" placeholder="예: 서귀포 남원 하우스, 2S~2L 혼합"></label>
-    <div class="row" style="margin:8px 0"><button class="btn accent small e_ai">AI 상세페이지·검색어 초안 만들기</button><span class="note e_aist"></span></div>
-    <div style="background:#f7f7f4;border-radius:8px;padding:10px;margin:8px 0">
-      <label>사진 넣기 <span class="note">(당도계 사진 등 실제 사진만. 상세페이지 맨 위에 들어갑니다)</span></label>
-      <input type="file" accept="image/*" class="e_img">
-      <input class="e_cap" placeholder="사진 설명 (예: 비파괴 당도계 측정 16.6 Brix · 1개 측정, 과일마다 차이 있음)" style="margin-top:6px">
-      <div class="row" style="margin-top:6px"><button class="btn small e_imgadd">사진을 상세페이지에 넣기</button><span class="note e_imgst"></span></div>
-    </div>
-    <label>상세페이지 HTML <span class="note">(비워두면 기존 상세 유지)</span><textarea class="e_html" rows="6" placeholder="AI 초안을 만들거나 직접 붙여넣기"></textarea></label>
-    <div class="note">미리보기</div><iframe class="e_prev" sandbox="" style="width:100%;height:420px;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>
+    <div class="row" style="justify-content:space-between;margin-top:10px"><div class="note">미리보기 (휴대폰 화면 폭)</div><button class="btn small e_toggle">HTML 직접 고치기</button></div>
+    <textarea class="e_html hidden" rows="8" placeholder="AI 초안이 여기에 들어옵니다"></textarea>
+    <div style="display:flex;justify-content:center;background:#eee;padding:12px;border-radius:8px"><iframe class="e_prev" sandbox="" style="width:400px;max-width:100%;height:640px;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe></div>
     <div class="row" style="margin-top:10px"><button class="btn dark e_save">쿠팡에 수정 요청 (승인 후 반영)</button></div>
   </div>`
   const tagCheck = () => {
@@ -334,36 +343,41 @@ function openCpEdit(spid) {
     const long = t.filter(x => x.length > 20), dup = t.filter((x, i) => t.indexOf(x) !== i)
     $(".e_tagcheck", box).textContent = `${t.length}/20개` + (t.length > 20 ? " · 20개 초과분은 잘립니다" : "") + (long.length ? ` · 20자 초과: ${long.join(", ")}` : "") + (dup.length ? ` · 중복: ${dup.join(", ")}` : "")
   }
-  const prev = () => { $(".e_prev", box).srcdoc = $(".e_html", box).value || "<p style='color:#888;font-family:sans-serif'>(기존 상세 유지)</p>" }
-  $(".e_tags", box).oninput = tagCheck; $(".e_html", box).oninput = prev; tagCheck(); prev()
+  const prev = () => { $(".e_prev", box).srcdoc = `<meta name="referrer" content="no-referrer"><body style="margin:0">` + ($(".e_html", box).value || "<p style='color:#888;font-family:sans-serif;padding:16px'>(아직 초안 없음 — 기존 상세 유지)</p>") }
+  const drawExtras = () => {
+    $(".e_extras", box).innerHTML = extras.map((e, i) => `<div class="row" style="margin-bottom:6px"><img src="${esc(e.url)}" style="width:64px;height:64px;object-fit:cover;border-radius:6px"><span style="flex:1;font-size:13px">${esc(e.caption || "(설명 없음)")}</span><button class="btn small e_exdel" data-i="${i}">빼기</button></div>`).join("")
+  }
+  const saveExtras = async () => { extras = await api("coupang/extras/" + spid, { method: "PUT", body: JSON.stringify(extras) }); drawExtras() }
+  $(".e_extras", box).onclick = async e => { const b = e.target.closest(".e_exdel"); if (!b) return; extras.splice(Number(b.dataset.i), 1); await saveExtras() }
+  $(".e_toggle", box).onclick = () => $(".e_html", box).classList.toggle("hidden")
+  $(".e_tags", box).oninput = tagCheck; $(".e_html", box).oninput = prev; tagCheck(); prev(); drawExtras()
   $(".e_imgadd", box).onclick = async () => {
     const f = $(".e_img", box).files[0]; if (!f) return toast("사진을 먼저 고르세요.")
     const st = $(".e_imgst", box); st.textContent = "올리는 중…"
     try {
       const fd = new FormData(); fd.append("file", await shrink(f, 1200), "photo.jpg")
       const r = await api("coupang/images", { method: "POST", body: fd })
-      const cap = $(".e_cap", box).value.trim()
-      const block = `<div style="text-align:center;margin:0 0 40px"><img src="${r.url}" alt="${esc(cap || "상품 사진")}" style="width:100%;max-width:780px;border-radius:12px">${cap ? `<p style="font-size:17px;color:#444;margin:12px 0 0">${esc(cap)}</p>` : ""}</div>`
-      const h = $(".e_html", box).value
-      const m = h.match(/^\s*<div[^>]*>/)
-      $(".e_html", box).value = m ? h.replace(m[0], m[0] + block) : block + h
-      prev(); st.textContent = "넣었습니다. 미리보기를 확인하세요."
+      extras.push({ url: r.url, caption: $(".e_cap", box).value.trim() }); await saveExtras()
+      $(".e_img", box).value = ""; $(".e_cap", box).value = ""
+      st.textContent = "추가됐습니다. 이제 ③ 버튼을 누르면 상세페이지에 들어갑니다."
     } catch (err) { st.textContent = "실패: " + err.message }
   }
   $(".e_ai", box).onclick = async () => {
-    const st = $(".e_aist", box); st.textContent = "작성 중… (30초~1분)"
-    await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "ai", sellerProductId: spid, notes: $(".e_notes", box).value }) })
+    const st = $(".e_aist", box); st.textContent = "사진 분석·작성 중… (1~2분)"; $(".e_report", box).innerHTML = ""
+    const images = $$(".e_use", box).filter(c => c.checked).map(c => c.dataset.u)
+    await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "ai", sellerProductId: spid, notes: $(".e_notes", box).value, images, extras }) })
     const t0 = Date.now()
     const tick = async () => {
       const r = await api("coupang/ai/" + spid).catch(() => ({}))
-      if (r.running || !r.at || new Date(r.at).getTime() < t0 - 5000) { if (Date.now() - t0 < 180000) return setTimeout(tick, 4000); st.textContent = "시간 초과. 다시 시도하세요."; return }
+      if (r.running || !r.at || new Date(r.at).getTime() < t0 - 5000) { if (Date.now() - t0 < 300000) return setTimeout(tick, 4000); st.textContent = "시간 초과. 다시 시도하세요."; return }
       if (r.error) { st.textContent = "실패: " + r.error; return }
       $(".e_title", box).value = r.title || $(".e_title", box).value
       if (r.tags?.length) $(".e_tags", box).value = r.tags.join(", ")
       $(".e_html", box).value = r.html || ""
-      tagCheck(); prev(); st.textContent = "초안 완성 — 내용 확인 후 고칠 부분 고쳐서 저장하세요. (AI 추천이며 사실 확인 필요)"
+      $(".e_report", box).innerHTML = (r.warnings || []).map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("") + (r.analysis ? `<div style="background:#f0f7ff;border:1px solid #cfe2ff;border-radius:8px;padding:10px 12px;font-size:14px;margin:10px 0;white-space:pre-wrap"><strong>AI 사진 분석</strong>\n${esc(r.analysis)}</div>` : "")
+      tagCheck(); prev(); st.textContent = "완성 — 미리보기를 확인하세요. 마음에 안 들면 메모를 고쳐 다시 누르면 됩니다."
     }
-    setTimeout(tick, 5000)
+    setTimeout(tick, 6000)
   }
   $(".e_save", box).onclick = async e => {
     const tags = $(".e_tags", box).value.split(",").map(x => x.trim()).filter(Boolean)

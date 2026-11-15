@@ -311,8 +311,17 @@ export default async (req: Request, context: Context) => {
         if (!(file instanceof Blob)) return json({ error: "사진 파일이 없습니다." }, 400)
         if (file.size > 4 * 1024 * 1024) return json({ error: "사진은 4MB 이하만 올릴 수 있습니다." }, 413)
         const key = `${randomUUID()}.jpg`
-        await getStore("public-images").set(key, await file.arrayBuffer())
+        await getStore({ name: "public-images", consistency: "strong" }).set(key, await file.arrayBuffer())
         return json({ url: `${url.origin}/img/${key}` }, 201)
+      }
+      if (id === "extras" && sub && method === "GET") {
+        return json((await settingsStore().get(`cp-extra-${sub}`, { type: "json" })) || [])
+      }
+      if (id === "extras" && sub && method === "PUT") {
+        const list = (await req.json()) as any[]
+        const clean = (Array.isArray(list) ? list : []).slice(0, 6).map((e) => ({ url: String(e.url || ""), caption: String(e.caption || "").slice(0, 200) }))
+        await settingsStore().setJSON(`cp-extra-${sub}`, clean)
+        return json(clean)
       }
       // ----- 상품 관리 -----
       if (id === "products" && method === "GET" && !sub) {
