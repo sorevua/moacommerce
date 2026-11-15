@@ -384,7 +384,7 @@ $("#cpRefresh").onclick = async () => {
 }
 $("#cpq").oninput = debounce(renderCp, 250); $("#cpf").onchange = renderCp
 function supplyFor(vid) {
-  for (const v of VENDORS) for (const p of v.products || []) if (String(p.coupangItemId || "") === String(vid)) return { vendor: v.name, name: p.name, supply: Number(p.supply) }
+  for (const v of VENDORS) for (const p of v.products || []) if (String(p.coupangItemId || "") === String(vid)) return { vendor: v.name, name: p.name, supply: Number(p.supplyPrice ?? p.supply) }
   return null
 }
 function cpVisible() {
