@@ -85,7 +85,10 @@ export async function publishDue() {
   for (const p of due.slice(0, 2)) {
     const caption = [p.body, (p.tags || []).map((t: string) => "#" + t).join(" ")].filter(Boolean).join("\n\n").slice(0, 2150)
     try {
-      const r = await fetch(hook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: env("MAKE_RELAY_TOKEN"), images: (p.photos || []).slice(0, 10), image: p.photos?.[0], caption }) })
+      let photos: string[] = (p.photos || []).slice(0, 10)
+      if (!photos.length) throw new Error("사진이 없습니다")
+      if (photos.length === 1) photos = [photos[0], photos[0].replace("fit=cover", "fit=contain")] // 인스타 묶음 게시물은 2장 이상
+      const r = await fetch(hook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: env("MAKE_RELAY_TOKEN"), files: photos.map((u: string) => ({ media_type: "IMAGE", image_url: u })), caption }) })
       const t = await r.text()
       if (!r.ok || /error|fail/i.test(t.slice(0, 200)) && !/"id"/.test(t)) throw new Error(t.slice(0, 200))
       p.postedAt = new Date().toISOString(); p.igResult = t.slice(0, 200); out.push({ id: p.id, ok: true })
