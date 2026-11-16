@@ -53,7 +53,10 @@ export async function makeDailyDraft(force = false, channel: "instagram" | "nave
 - 사진 자리는 본문 안에 [사진1], [사진2]처럼 따로 한 줄로 표시하고, 받은 사진을 모두 한 번씩 쓴다. 사진마다 그 사진에 실제로 보이는 것을 2~3문장으로 이야기한다.
 - 문단은 2~3문장, 줄바꿈 넉넉히. 고르는 법·보관법은 사실에 있는 것만.
 ` : `과일 산지직송 판매자의 인스타그램 게시글을 씁니다.
-- 첫 줄은 눈길 가는 한 문장(25자 이내). 본문 250~500자, 짧은 줄. 마지막 줄에 구매 안내 한 줄.
+- 첫 줄(18자 이내)이 전부다. 스크롤을 멈추게 하는 한 문장: 의외의 사실, 흔한 실수, 궁금증 중 하나. 예) "키위, 딱딱할 때 먹으면 손해예요" / "귤 상자 받으면 이것부터 하세요". 상품명·"산지직송"으로 시작하지 않는다. 사실에 근거해야 한다.
+- 본문 200~400자. 사람들이 저장해 둘 만한 쓸모 있는 정보 하나(보관법, 익히는 법, 고르는 법 등)를 2~4개의 짧은 줄로 정리한다.
+- 끝에서 둘째 줄: 댓글을 부르는 가벼운 질문 하나(예: "키위는 말랑파세요, 단단파세요?"). 마지막 줄: 구매 안내 한 줄.
+- 사진 중 가장 가까이서 선명하게 찍힌 것을 첫 장으로 고른다. @@ORDER에 사진 번호를 쉼표로 적는다(예: 3,1,2,4).
 `) + `
 - 판매자가 확인한 사실과 사진에 보이는 것만 쓴다. 없는 당도·수상·후기·판매량·효능은 만들지 않는다. 측정값은 "측정 예시"로.
 - 판매자가 하지 않은 행동을 지어내지 않는다: "오늘 상자를 열었다", "잘라 봤다", "먹어 봤다", "방금 들어왔다" 같은 말은 판매자가 확인한 사실에 있을 때만 쓴다. 사진에 없는 장면(과일 단면, 포장 상자 등)을 본 것처럼 쓰지 않는다.
@@ -64,7 +67,9 @@ ${HUMAN_RULES}
 @@BODY
 본문
 @@TAGS
-태그1, 태그2`
+태그1, 태그2
+@@ORDER
+1,2,3,4`
   const client = new Anthropic()
   const ask = async (msgs: any[]) => { const m: any = await aiCreate(client, { model: process.env.AI_MODEL || "claude-sonnet-5-5", max_tokens: blog ? 5000 : 2000, system, messages: msgs }); return m.content.map((b: any) => (b.type === "text" ? b.text : "")).join("") }
   const sec = (t: string, n: string) => (t.match(new RegExp(`@@${n}\\s*([\\s\\S]*?)(?=\\n@@[A-Z]+\\s|$)`)) || [])[1]?.trim() || ""
@@ -83,6 +88,8 @@ ${HUMAN_RULES}
     await P().setJSON(stKey, { n: st.n + 1 })
     return { made: bp.id, product: bp.product, channel }
   }
+  const ord = sec(text, "ORDER").split(/[,\s]+/).map((n) => Number(n) - 1).filter((n) => Number.isInteger(n) && n >= 0 && n < pick.length)
+  if (ord.length) { const re = [...new Set(ord)].map((i) => pick[i]); for (const u of pick) if (!re.includes(u)) re.push(u); pick.splice(0, pick.length, ...re) }
   const post = { id: randomUUID(), at: new Date().toISOString(), channel: "instagram", product: String(full.displayProductName || "").slice(0, 100), title: body.split("\n")[0].slice(0, 200), body, tags: sec(text, "TAGS").split(/[,\n]/).map((t) => t.trim().replace(/^#/, "")).filter(Boolean).slice(0, 20), photos: pick.map(igImg), postedAt: null as string | null, url: "", auto: true, day: today, scheduleAt: (when.getTime() > Date.now() ? when : new Date(Date.now() + 3600e3)).toISOString(), hold: !cfg.autoPublish }
   const cur: any[] = ((await P().get("posts", { type: "json" })) as any[]) || []
   cur.unshift(post)
