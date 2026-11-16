@@ -10,6 +10,6 @@ export default async (req: Request) => {
   const list: any[] = ((await getStore({ name: "admin-promo", consistency: "strong" }).get("posts", { type: "json" })) as any[]) || []
   const p = list.find((x) => x.auto)
   if (p && u.searchParams.get("img") === "1") return new Response(`<html><body>${p.photos.map((s: string) => `<img src="${s}" style="width:300px">`).join("")}<pre style="white-space:pre-wrap;font:16px sans-serif">${p.body}\n\n${p.tags.map((t: string) => "#" + t).join(" ")}</pre></body></html>`, { headers: { "content-type": "text/html; charset=utf-8" } })
-  return Response.json(p || null)
+  return Response.json({ last: await getStore({ name: "admin-promo", consistency: "strong" }).get("ig-last", { type: "json" }), post: p || null })
 }
 export const config: Config = { path: "/api/onetime-ig" }
