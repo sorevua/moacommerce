@@ -71,7 +71,12 @@ export async function runPricing() {
       if (!supply || (!p.coupangItemId && !p.naverItemId)) continue
       const row: any = { vendor: v.name, product: p.name, supply, floorCp: up100(supply / (1 - cpFee - cfg.minMargin)), floorNv: up100(supply / (1 - nvFee - cfg.minMargin)) }
       try {
-        const r = await research(client, v.name, p.name)
+        let r: any, lastErr: any
+        for (let t = 0; t < 3 && !r; t++) { try { r = await research(client, v.name, p.name) } catch (e) { lastErr = e; await new Promise((ok) => setTimeout(ok, 20000)) } }
+        if (!r) throw lastErr
+        await new Promise((ok) => setTimeout(ok, 4000))
+        // 중간값에서 너무 벗어난 가격(60% 미만·160% 초과)은 다른 등급·구성일 가능성이 커서 뺀다
+        if (r.items.length >= 3) { const m0 = median(r.items.map((x: any) => x.price)); r.items = r.items.filter((x: any) => x.price >= m0 * 0.6 && x.price <= m0 * 1.6) }
         const prices = r.items.map((x: any) => x.price)
         row.samples = r.items; row.note = r.note; row.n = prices.length
         if (prices.length) { row.marketMedian = Math.round(median(prices)); row.marketMin = Math.min(...prices) }
@@ -80,6 +85,7 @@ export async function runPricing() {
         if (!cur) return { cur, action: "현재가 모름" }
         if (cur < floor) return { cur, action: `⚠ 현재가가 최소마진가(${floor.toLocaleString()}원)보다 낮음 — 올려야 함`, suggest: floor }
         if (!row.marketMedian || row.n < cfg.minSamples) return { cur, action: "비교 자료 부족 — 유지" }
+        if (floor > row.marketMedian) return { cur, action: `⚠ 최소마진가(${floor.toLocaleString()}원)가 시장 중간값보다 높음 — 내려도 못 이김. 공급가 협의·차별화 필요 (유지)` }
         const want = dn100(row.marketMedian * (1 - cfg.undercut))
         if (want >= cur) return { cur, action: cur <= row.marketMedian ? "시장가 이하 — 유지" : "유지", suggest: want > cur * 1.03 ? want : undefined }
         const target = Math.max(floor, want, up100(cur * (1 - cfg.maxDropPerRun)))
