@@ -16,7 +16,7 @@ export async function igConfig() { return { ...IG_DEFAULT, ...(((await P().get("
 // 인스타는 공개 JPEG 주소가 필요 → Netlify 이미지 서버로 1080 정사각 JPEG 변환
 const igImg = (u: string) => `${SITE()}/.netlify/images?url=${encodeURIComponent(u)}&w=1080&h=1080&fit=cover&fm=jpg&q=88`
 
-const ANGLES = ["오늘 들어온 상자를 열어 본 이야기", "크기·당도처럼 사람들이 제일 궁금해하는 것 하나", "보관하는 법이나 맛있게 먹는 법 한 가지", "산지 농가 이야기 (사진에 보이는 것만)", "선물로 보낼 때 좋은 점", "솔직한 단점 하나와 그래도 권하는 이유"]
+const ANGLES = ["사진에 보이는 장면 하나를 골라 이야기", "크기·당도처럼 사람들이 제일 궁금해하는 것 하나", "보관하는 법이나 맛있게 먹는 법 한 가지", "산지 농가 이야기 (사진에 보이는 것만)", "선물로 보낼 때 좋은 점", "솔직한 단점 하나와 그래도 권하는 이유"]
 
 export async function makeDailyDraft(force = false) {
   const cfg = await igConfig()
@@ -32,7 +32,8 @@ export async function makeDailyDraft(force = false) {
   const prod = onSale[st.n % onSale.length], angle = ANGLES[Math.floor(st.n / onSale.length) % ANGLES.length]
   const full: any = await getProduct(String(prod.sellerProductId))
   const imgs: string[] = []
-  for (const it of full.items || []) for (const im of it.images || []) { const u = normImg(im.cdnPath || im.vendorPath); if (u && !imgs.includes(u)) imgs.push(u) }
+  // 대표사진은 AI로 만든 것일 수 있어 빼고, 실제 사진(추가 사진)만 쓴다
+  for (const it of full.items || []) for (const im of it.images || []) { if (im.imageType === "REPRESENTATION") continue; const u = normImg(im.cdnPath || im.vendorPath); if (u && !imgs.includes(u)) imgs.push(u) }
   // 매번 다른 사진부터 쓰도록 돌려 가며 고른다 (최대 4장)
   const start = st.n % Math.max(1, imgs.length)
   const pick = [...imgs.slice(start), ...imgs.slice(0, start)].slice(0, 4)
@@ -41,12 +42,14 @@ export async function makeDailyDraft(force = false) {
   const settings: any = (await P().get("settings", { type: "json" })) || {}
   const spid = String(prod.sellerProductId)
   const facts = [copy.notes?.[spid], copy.facts, copy.guides?.[spid] && `보관·손질: ${String(copy.guides[spid]).slice(0, 500)}`].filter(Boolean).join("\n") || "(없음)"
-  const content: any[] = [{ type: "text", text: `상품: ${full.displayProductName || full.sellerProductName}\n옵션·가격: ${(prod.items || []).filter((i: any) => i.onSale).map((i: any) => `${i.itemName} ${Number(i.salePrice).toLocaleString()}원`).join(", ")}\n판매자가 확인한 사실:\n${facts}\n오늘 글의 소재: ${angle}\n구매 안내: 쿠팡·네이버에서 "${settings.brand || "모아커머스"}" 검색${settings.openchat ? ` 또는 오픈채팅 ${settings.openchat}` : ""}${settings.voice ? `\n\n판매자 말투 샘플(말투만 참고):\n${settings.voice}` : ""}` }]
+  const content: any[] = [{ type: "text", text: `상품: ${full.displayProductName || full.sellerProductName}\n옵션: ${(prod.items || []).filter((i: any) => i.onSale).map((i: any) => i.itemName).join(", ")}\n판매자가 확인한 사실:\n${facts}\n오늘 글의 소재: ${angle}\n구매 안내: 쿠팡·네이버에서 "${settings.brand || "모아커머스"}" 검색${settings.openchat ? ` 또는 오픈채팅 ${settings.openchat}` : ""}${settings.voice ? `\n\n판매자 말투 샘플(말투만 참고):\n${settings.voice}` : ""}` }]
   for (let i = 0; i < pick.length; i++) {
     try { const r = await fetch(`${SITE()}/.netlify/images?url=${encodeURIComponent(pick[i])}&w=768&fm=jpg&q=75`); if (!r.ok) continue; content.push({ type: "text", text: `[사진${i + 1}]` }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: Buffer.from(await r.arrayBuffer()).toString("base64") } }) } catch {}
   }
   const system = `과일 산지직송 판매자의 인스타그램 게시글을 씁니다.
 - 판매자가 확인한 사실과 사진에 보이는 것만 쓴다. 없는 당도·수상·후기·판매량·효능은 만들지 않는다. 측정값은 "측정 예시"로.
+- 판매자가 하지 않은 행동을 지어내지 않는다: "오늘 상자를 열었다", "잘라 봤다", "먹어 봤다", "방금 들어왔다" 같은 말은 판매자가 확인한 사실에 있을 때만 쓴다. 사진에 없는 장면(과일 단면, 포장 상자 등)을 본 것처럼 쓰지 않는다.
+- 가격은 쓰지 않는다(자주 바뀜). 무료배송 같은 조건은 사실에 있을 때만.
 - 첫 줄은 눈길 가는 한 문장(25자 이내). 본문 250~500자, 짧은 줄. 마지막 줄에 구매 안내 한 줄.
 - 해시태그 10~15개는 @@TAGS에만.
 ${HUMAN_RULES}
