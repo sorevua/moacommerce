@@ -18,17 +18,19 @@ const igImg = (u: string) => `${SITE()}/.netlify/images?url=${encodeURIComponent
 
 const ANGLES = ["사진에 보이는 장면 하나를 골라 이야기", "크기·당도처럼 사람들이 제일 궁금해하는 것 하나", "보관하는 법이나 맛있게 먹는 법 한 가지", "산지 농가 이야기 (사진에 보이는 것만)", "선물로 보낼 때 좋은 점", "솔직한 단점 하나와 그래도 권하는 이유"]
 
-export async function makeDailyDraft(force = false) {
+export async function makeDailyDraft(force = false, channel: "instagram" | "naver_blog" = "instagram") {
+  const blog = channel === "naver_blog"
   const cfg = await igConfig()
   if (!cfg.daily && !force) return { skipped: "매일 만들기 꺼짐" }
   if (!coupangConfigured()) return { skipped: "쿠팡 미연결" }
   const list: any[] = ((await P().get("posts", { type: "json" })) as any[]) || []
   const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10)
-  if (!force && list.some((x) => x.auto && x.channel === "instagram" && String(x.day) === today)) return { skipped: "오늘 것은 이미 있음" }
+  if (!force && list.some((x) => (x.auto || x.autoBlog) && x.channel === channel && String(x.day) === today)) return { skipped: "오늘 것은 이미 있음" }
   const cp: any = (await S().get("coupang-products", { type: "json" })) || {}
   const onSale = (cp.products || []).filter((p: any) => (p.items || []).some((i: any) => i.onSale))
   if (!onSale.length) return { skipped: "판매 중인 상품 없음" }
-  const st: any = (await P().get("ig-state", { type: "json" })) || { n: 0 }
+  const stKey = blog ? "blog-state" : "ig-state"
+  const st: any = (await P().get(stKey, { type: "json" })) || { n: blog ? 1 : 0 }
   const prod = onSale[st.n % onSale.length], angle = ANGLES[Math.floor(st.n / onSale.length) % ANGLES.length]
   const full: any = await getProduct(String(prod.sellerProductId))
   const imgs: string[] = []
@@ -36,7 +38,7 @@ export async function makeDailyDraft(force = false) {
   for (const it of full.items || []) for (const im of it.images || []) { if (im.imageType === "REPRESENTATION") continue; const u = normImg(im.cdnPath || im.vendorPath); if (u && !imgs.includes(u)) imgs.push(u) }
   // 매번 다른 사진부터 쓰도록 돌려 가며 고른다 (최대 4장)
   const start = st.n % Math.max(1, imgs.length)
-  const pick = [...imgs.slice(start), ...imgs.slice(0, start)].slice(0, 4)
+  const pick = [...imgs.slice(start), ...imgs.slice(0, start)].slice(0, blog ? 6 : 4)
   if (!pick.length) return { skipped: "사진 없음" }
   const copy: any = (await S().get("cp-copy", { type: "json" })) || {}
   const settings: any = (await P().get("settings", { type: "json" })) || {}
@@ -46,11 +48,16 @@ export async function makeDailyDraft(force = false) {
   for (let i = 0; i < pick.length; i++) {
     try { const r = await fetch(`${SITE()}/.netlify/images?url=${encodeURIComponent(pick[i])}&w=768&fm=jpg&q=75`); if (!r.ok) continue; content.push({ type: "text", text: `[사진${i + 1}]` }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: Buffer.from(await r.arrayBuffer()).toString("base64") } }) } catch {}
   }
-  const system = `과일 산지직송 판매자의 인스타그램 게시글을 씁니다.
+  const system = (blog ? `과일 산지직송 판매자의 네이버 블로그 글을 씁니다.
+- 첫 줄은 제목(25~35자, 사람들이 검색할 말을 앞쪽에). 그다음부터 본문 1,200~1,800자.
+- 사진 자리는 본문 안에 [사진1], [사진2]처럼 따로 한 줄로 표시하고, 받은 사진을 모두 한 번씩 쓴다. 사진마다 그 사진에 실제로 보이는 것을 2~3문장으로 이야기한다.
+- 문단은 2~3문장, 줄바꿈 넉넉히. 고르는 법·보관법은 사실에 있는 것만.
+` : `과일 산지직송 판매자의 인스타그램 게시글을 씁니다.
+- 첫 줄은 눈길 가는 한 문장(25자 이내). 본문 250~500자, 짧은 줄. 마지막 줄에 구매 안내 한 줄.
+`) + `
 - 판매자가 확인한 사실과 사진에 보이는 것만 쓴다. 없는 당도·수상·후기·판매량·효능은 만들지 않는다. 측정값은 "측정 예시"로.
 - 판매자가 하지 않은 행동을 지어내지 않는다: "오늘 상자를 열었다", "잘라 봤다", "먹어 봤다", "방금 들어왔다" 같은 말은 판매자가 확인한 사실에 있을 때만 쓴다. 사진에 없는 장면(과일 단면, 포장 상자 등)을 본 것처럼 쓰지 않는다.
 - 가격은 쓰지 않는다(자주 바뀜). 무료배송 같은 조건은 사실에 있을 때만.
-- 첫 줄은 눈길 가는 한 문장(25자 이내). 본문 250~500자, 짧은 줄. 마지막 줄에 구매 안내 한 줄.
 - 해시태그 10~15개는 @@TAGS에만.
 ${HUMAN_RULES}
 출력 형식(다른 말 없이):
@@ -59,7 +66,7 @@ ${HUMAN_RULES}
 @@TAGS
 태그1, 태그2`
   const client = new Anthropic()
-  const ask = async (msgs: any[]) => { const m: any = await aiCreate(client, { model: process.env.AI_MODEL || "claude-sonnet-5-5", max_tokens: 2000, system, messages: msgs }); return m.content.map((b: any) => (b.type === "text" ? b.text : "")).join("") }
+  const ask = async (msgs: any[]) => { const m: any = await aiCreate(client, { model: process.env.AI_MODEL || "claude-sonnet-5-5", max_tokens: blog ? 5000 : 2000, system, messages: msgs }); return m.content.map((b: any) => (b.type === "text" ? b.text : "")).join("") }
   const sec = (t: string, n: string) => (t.match(new RegExp(`@@${n}\\s*([\\s\\S]*?)(?=\\n@@[A-Z]+\\s|$)`)) || [])[1]?.trim() || ""
   let text = await ask([{ role: "user", content }])
   const tells = aiTells(text)
@@ -67,11 +74,20 @@ ${HUMAN_RULES}
   const body = sec(text, "BODY")
   if (!body) throw new Error("AI 응답을 읽지 못했습니다.")
   const when = new Date(`${today}T${String(cfg.hour).padStart(2, "0")}:00:00+09:00`)
+  if (blog) {
+    const lines = body.split("\n"), title = lines[0].replace(/^#+\s*/, "").slice(0, 200)
+    const bp = { id: randomUUID(), at: new Date().toISOString(), channel: "naver_blog", product: String(full.displayProductName || "").slice(0, 100), title, body: lines.slice(1).join("\n").trim(), tags: sec(text, "TAGS").split(/[,\n]/).map((t) => t.trim().replace(/^#/, "")).filter(Boolean).slice(0, 15), photos: pick.map(igImg).map((u) => u.replace("&h=1080&fit=cover", "")), postedAt: null as string | null, url: "", autoBlog: true, day: today }
+    const cur0: any[] = ((await P().get("posts", { type: "json" })) as any[]) || []
+    cur0.unshift(bp)
+    await P().setJSON("posts", cur0.slice(0, 200))
+    await P().setJSON(stKey, { n: st.n + 1 })
+    return { made: bp.id, product: bp.product, channel }
+  }
   const post = { id: randomUUID(), at: new Date().toISOString(), channel: "instagram", product: String(full.displayProductName || "").slice(0, 100), title: body.split("\n")[0].slice(0, 200), body, tags: sec(text, "TAGS").split(/[,\n]/).map((t) => t.trim().replace(/^#/, "")).filter(Boolean).slice(0, 20), photos: pick.map(igImg), postedAt: null as string | null, url: "", auto: true, day: today, scheduleAt: (when.getTime() > Date.now() ? when : new Date(Date.now() + 3600e3)).toISOString(), hold: !cfg.autoPublish }
   const cur: any[] = ((await P().get("posts", { type: "json" })) as any[]) || []
   cur.unshift(post)
   await P().setJSON("posts", cur.slice(0, 200))
-  await P().setJSON("ig-state", { n: st.n + 1 })
+  await P().setJSON(stKey, { n: st.n + 1 })
   return { made: post.id, product: post.product, scheduleAt: post.scheduleAt }
 }
 

@@ -1443,9 +1443,11 @@ function renderInbox() {
       <div style="white-space:pre-wrap;font-size:15px;margin:6px 0;max-height:150px;overflow:auto">${esc(x.body)}</div>
       <div class="row"><button class="btn small" data-pcopy="${esc(x.id)}">글 복사</button><button class="btn small" data-ighold="${esc(x.id)}" data-h="${x.hold ? 0 : 1}">${x.hold ? "예약 게시로 되돌리기" : "게시 보류"}</button><button class="btn small" data-igdel="${esc(x.id)}">삭제</button></div></div>`).join("")}
     <h3 style="margin:16px 0 6px">📣 아직 안 올린 홍보 글 ${posts.length}개</h3>
-    ${posts.length ? posts.map(x => `<div class="row" style="border-bottom:1px solid var(--line);padding:10px 0"><div style="flex:1"><b>${esc(PCH[x.channel] || x.channel)}</b> · ${esc(x.title || x.product || "")}</div><button class="btn small" data-pcopy="${esc(x.id)}">글 복사</button><button class="btn small" data-go="promo">보기</button></div>`).join("") : `<p class="note">대기 중인 홍보 글이 없습니다. [홍보]에서 사진만 넣으면 만들어 줍니다.</p>`}`
+    <div class="row" style="margin-bottom:6px"><span class="note">네이버 블로그 글은 월·수·금 아침에 자동으로 만들어 둡니다. [글 복사] → 블로그 앱에 붙여넣기 → [사진n] 자리에 사진 넣기.</span><span class="spacer"></span><button class="btn small" id="blog_make">블로그 글 지금 만들기</button></div>
+    ${posts.length ? posts.map(x => `<div style="border-bottom:1px solid var(--line);padding:10px 0"><div class="row"><div style="flex:1"><b>${esc(PCH[x.channel] || x.channel)}</b> · ${esc(x.title || x.product || "")}</div><button class="btn small" data-pcopy="${esc(x.id)}">글 복사</button><button class="btn small" data-pdone="${esc(x.id)}">✅ 올렸어요</button></div>${x.autoBlog ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${(x.photos || []).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener" title="길게 눌러 저장"><img src="${esc(u)}" loading="lazy" style="width:72px;height:72px;object-fit:cover;border-radius:8px"><div class="note" style="text-align:center">사진${i + 1}</div></a>`).join("")}</div>` : ""}</div>`).join("") : `<p class="note">대기 중인 홍보 글이 없습니다. [홍보]에서 사진만 넣으면 만들어 줍니다.</p>`}`
   const igSave = async b => { IG = await api2("ig", { method: "PUT", body: JSON.stringify(b) }); toast("저장했어요") }
   $("#ig_daily").onchange = e => igSave({ daily: e.target.checked }); $("#ig_auto").onchange = e => igSave({ autoPublish: e.target.checked }); $("#ig_hour").onchange = e => igSave({ hour: Number(e.target.value) })
+  $("#blog_make").onclick = async () => { await fetch("/.netlify/functions/insta-draft-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ blog: true }) }); toast("블로그 글을 쓰는 중… 1~2분 뒤에 나타납니다"); setTimeout(loadPromo, 70000); setTimeout(loadPromo, 130000) }
   $("#ig_make").onclick = async () => { await fetch("/.netlify/functions/insta-draft-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ force: true }) }); toast("게시물을 만드는 중… 1~2분 뒤에 나타납니다"); setTimeout(loadPromo, 60000); setTimeout(loadPromo, 120000) }
   $("#inqSync").onclick = async () => {
     toast("문의를 가져오는 중… 1~2분 걸립니다")
@@ -1465,6 +1467,7 @@ document.addEventListener("click", async e => {
   }
   const ih = e.target.closest("[data-ighold]"); if (ih) { await api2("posts/" + ih.dataset.ighold, { method: "PUT", body: JSON.stringify({ hold: ih.dataset.h === "1" }) }); loadPromo() }
   const idl = e.target.closest("[data-igdel]"); if (idl && confirm("이 게시물을 지울까요?")) { await api2("posts/" + idl.dataset.igdel, { method: "DELETE" }); loadPromo() }
+  const pd = e.target.closest("[data-pdone]"); if (pd) { await api2("posts/" + pd.dataset.pdone, { method: "PUT", body: JSON.stringify({ posted: true }) }); loadPromo() }
   const pc = e.target.closest("[data-pcopy]")
   if (pc) { const x = (PROMO.posts || []).find(y => y.id === pc.dataset.pcopy); if (x) { await navigator.clipboard.writeText([x.title, x.body, (x.tags || []).map(t => "#" + t).join(" ")].filter(Boolean).join("\n\n")).catch(() => {}); toast("복사했어요. 붙여넣기만 하세요.") } }
 })
