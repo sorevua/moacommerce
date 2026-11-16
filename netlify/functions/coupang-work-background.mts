@@ -793,6 +793,11 @@ async function createNew(job: any) {
       it.searchTags = tags
       return it
     })
+    // B2B 업체 상품은 모아커머스 대신 업체에 정한 브랜드(없으면 '기타')
+    if (job.vendorId) {
+      const vv: any = await getStore({ name: "admin-vendors", consistency: "strong" }).get(String(job.vendorId), { type: "json" }).catch(() => null)
+      if (vv?.kind === "B2B") job.brand = vv.brandName || "기타"
+    }
     body.brand = String(job.brand || "모아커머스")
     if (!body.manufacture) body.manufacture = body.brand
     // 구매옵션(EXPOSED)/검색옵션(NONE) 구분을 붙인다 — 없으면 쿠팡이 구매옵션으로 보지 않는다

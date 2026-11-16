@@ -285,6 +285,7 @@ nav button .ic{font-size:18px}
       <div class="card">
         <div class="row"><h2 style="margin:0;font-size:24px">수익 현황</h2><span class="spacer"></span>
           <select id="m_period" style="width:auto"><option value="today">오늘</option><option value="week">최근 7일</option><option value="month" selected>이번 달</option><option value="last">지난 달</option><option value="all">전체</option></select>
+          <select id="m_kind" style="width:auto"><option value="">산지직송+B2B</option><option>산지직송</option><option>B2B</option></select>
           <select id="m_channel" style="width:auto"><option value="">모든 채널</option><option>쿠팡</option><option>네이버</option><option>카톡</option><option>밴드</option><option>기타</option></select>
         </div>
         <div class="tiles" id="moneyTiles" style="margin-top:14px"></div>
@@ -389,6 +390,18 @@ $("#cpRefresh").onclick = async () => {
   toast("쿠팡에서 불러오는 중… 상품 수에 따라 1~3분"); setTimeout(loadCpProducts, 2500)
 }
 $("#cpq").oninput = debounce(renderCp, 250); $("#cpf").onchange = renderCp
+function vendorForProduct(p) {
+  const ids = new Set((p?.items || []).map(i => String(i.vendorItemId)))
+  return (VENDORS || []).find(v => (v.products || []).some(x => ids.has(String(x.coupangItemId || "").trim()))) || null
+}
+const isB2B = v => v?.kind === "B2B"
+// B2B 상품의 글·디자인에서 모아커머스를 지운다 (브랜드명이 있으면 그 이름으로 바꿈)
+function scrubBrand(x, to) {
+  if (typeof x === "string") return x.replace(/모아\s*커머스/g, to || "").replace(/\s{2,}/g, " ").replace(/^[\s—·\-]+|[\s—·\-]+$/g, "")
+  if (Array.isArray(x)) return x.map(y => scrubBrand(y, to))
+  if (x && typeof x === "object") { const o = {}; for (const k of Object.keys(x)) o[k] = scrubBrand(x[k], to); return o }
+  return x
+}
 function supplyFor(vid) {
   for (const v of VENDORS) for (const p of v.products || []) if (String(p.coupangItemId || "") === String(vid)) return { vendor: v.name, name: p.name, supply: Number(p.supplyPrice ?? p.supply) }
   return null
@@ -1107,8 +1120,16 @@ async function openCpEdit(spid) {
   }
   const saveExtras = async () => { extras = await api("coupang/extras/" + spid, { method: "PUT", body: JSON.stringify(extras) }); drawExtras() }
   $(".e_extras", box).onclick = async e => { const b = e.target.closest(".e_exdel"); if (!b) return; extras.splice(Number(b.dataset.i), 1); await saveExtras() }
-  $(".e_brand", box).value = copy.brand ?? '모아커머스 — 산지 업체와 직접 연결해 제철 과일을 보내 드립니다. 궁금한 점은 쿠팡 문의하기로 남겨 주세요.'
-  $(".e_facts", box).value = copy.facts ?? "산지직송: 산지 업체가 수확한 과일을 직접 포장해 발송합니다."
+  const pv = vendorForProduct(p), b2b = isB2B(pv)
+  box._b2b = b2b; box._brandTo = pv?.brandName || ""
+  if (b2b) {
+    $(".e_brand", box).value = pv.brandName ? `${pv.brandName}${pv.brandText ? " — " + pv.brandText : ""}` : ""
+    $(".e_facts", box).value = ""
+    const sm = $(".e_brand", box).closest("details")?.querySelector("summary"); if (sm) sm.textContent = `B2B 상품 (${pv.name}) · 판매자 소개 · 배송/반품 안내 — 모아커머스 표시 안 함`
+  } else {
+    $(".e_brand", box).value = copy.brand ?? '모아커머스 — 산지 업체와 직접 연결해 제철 과일을 보내 드립니다. 궁금한 점은 쿠팡 문의하기로 남겨 주세요.'
+    $(".e_facts", box).value = copy.facts ?? "산지직송: 산지 업체가 수확한 과일을 직접 포장해 발송합니다."
+  }
   { const n = p.displayProductName || p.sellerProductName; $(".e_theme", box).value = /석류|딸기|체리|자두/.test(n) ? "berry" : /키위|샤인|청포도|매실/.test(n) ? "fresh" : /신고배|나주배|사과/.test(n) ? "premium" : "citrus" }
   $(".e_guide", box).value = copy.guides?.[spid] ?? guideFor(p.displayProductName || p.sellerProductName)
   $(".e_ship", box).value = copy.shipping ?? `무료배송입니다.
@@ -1144,7 +1165,7 @@ async function openCpEdit(spid) {
       const images = await pgUniqueUrls($$(".e_use", box).filter(c => c.checked).map(c => c.dataset.u))
       st.textContent = "사진 분석·글 작성·연출 사진 생성 중… (3~8분, 창을 닫지 마세요)"
       const brand = $(".e_brand", box).value.trim(), shipping = $(".e_ship", box).value.trim(), facts = $(".e_facts", box).value.trim(), fruitGuide = $(".e_guide", box).value.trim()
-      api("coupang/copy", { method: "PUT", body: JSON.stringify({ brand, shipping, facts, guide: { id: spid, text: fruitGuide } }) }).catch(() => {})
+      api("coupang/copy", { method: "PUT", body: JSON.stringify(box._b2b ? { shipping, guide: { id: spid, text: fruitGuide } } : { brand, shipping, facts, guide: { id: spid, text: fruitGuide } }) }).catch(() => {})
       await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "design", sellerProductId: spid, notes: $(".e_notes", box).value, images, extras, brand, shipping, facts, fruitGuide, genImages: $(".e_gen", box)?.checked !== false }) })
       const t0 = Date.now()
       let r = {}
@@ -1155,7 +1176,8 @@ async function openCpEdit(spid) {
         if (Date.now() - t0 > 840000) throw new Error("시간 초과. 다시 시도하세요.")
       }
       if (r.error) throw new Error(r.error)
-      const d = r.design
+      let d = r.design
+      if (box._b2b) { d = scrubBrand(d, box._brandTo); if (!brand) d.brand = null }
       const theme = $(".e_theme", box).value
       const shots = await renderDesign(d, theme, m => st.textContent = m, $(".e_style", box).value)
       const urls = []
@@ -1242,7 +1264,7 @@ async function openCpEdit(spid) {
     const st = $(".e_aist", box); st.textContent = gen ? "사진 분석·작성 중… 필요한 연출 사진을 만들고 검수하면 3~8분 걸립니다." : "사진 분석·작성 중… (1~2분)"; $(".e_report", box).innerHTML = ""
     const images = $$(".e_use", box).filter(c => c.checked).map(c => c.dataset.u)
     const brand = $(".e_brand", box).value.trim(), shipping = $(".e_ship", box).value.trim(), facts = $(".e_facts", box).value.trim(), fruitGuide = $(".e_guide", box).value.trim()
-    api("coupang/copy", { method: "PUT", body: JSON.stringify({ brand, shipping, facts, guide: { id: spid, text: fruitGuide } }) }).catch(() => {})
+    api("coupang/copy", { method: "PUT", body: JSON.stringify(box._b2b ? { shipping, guide: { id: spid, text: fruitGuide } } : { brand, shipping, facts, guide: { id: spid, text: fruitGuide } }) }).catch(() => {})
     await fetch("/.netlify/functions/coupang-work-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ type: "ai", sellerProductId: spid, notes: $(".e_notes", box).value, images, extras, brand, shipping, facts, fruitGuide, theme: $(".e_theme", box).value, genImages: gen }) })
     const t0 = Date.now()
     const tick = async () => {
@@ -1259,6 +1281,11 @@ async function openCpEdit(spid) {
     setTimeout(tick, 6000)
   }
   $(".e_save", box).onclick = async e => {
+    if (box._b2b) { // B2B: 상품명·검색어·글자형 상세에서 모아커머스 제거
+      $(".e_title", box).value = scrubBrand($(".e_title", box).value, box._brandTo)
+      $(".e_tags", box).value = $(".e_tags", box).value.split(",").map(x => x.trim()).filter(x => x && !/모아\s*커머스/.test(x)).join(", ")
+      $(".e_html", box).value = scrubBrand($(".e_html", box).value, box._brandTo)
+    }
     const tags = $(".e_tags", box).value.split(",").map(x => x.trim()).filter(Boolean)
     const chk = runCheck()
     if (chk.errors.length) return toast("자동 점검에서 ❌ 항목을 먼저 고쳐 주세요.")
@@ -1323,8 +1350,9 @@ function moneySum(list) {
 }
 function renderMoney() {
   if (!$("#moneyTiles")) return
-  const per = $("#m_period").value, ch = $("#m_channel").value
-  const live = (ORDERS || []).filter(o => o.status !== "취소" && inPeriod(orderDate(o), per) && (!ch || o.channel === ch))
+  const per = $("#m_period").value, ch = $("#m_channel").value, kd = $("#m_kind").value
+  const kindOf = o => ((VENDORS || []).find(v => v.id === o.vendorId)?.kind || "산지직송")
+  const live = (ORDERS || []).filter(o => o.status !== "취소" && inPeriod(orderDate(o), per) && (!ch || o.channel === ch) && (!kd || kindOf(o) === kd))
   const t = moneySum(live), cancel = (ORDERS || []).filter(o => o.status === "취소" && inPeriod(orderDate(o), per) && (!ch || o.channel === ch)).length
   const tile = (n, tt, color) => `<div class="tile" style="cursor:default"><div class="n" style="font-size:26px;color:${color || "var(--ink)"}">${n}</div><div class="t">${tt}</div></div>`
   $("#moneyTiles").innerHTML = tile(wonK(t.sales), "판매금액 (고객이 낸 돈)") + tile(wonK(t.supply), "공급가 (업체에 줄 돈)") + tile(wonK(t.fee), "마켓 수수료 (추정)") + tile(wonK(t.profit), "순이익", t.profit >= 0 ? "var(--ok)" : "var(--accent)") + tile(`${t.n}건 · ${t.qty}박스`, "주문") + tile(cancel + "건", "취소")
@@ -1338,7 +1366,7 @@ function renderMoney() {
   $("#moneyByProd").innerHTML = groups(o => vname(o.vendorId) + "|" + (o.productName || o.marketProductName)).sort((a, b) => moneySum(b[1]).sales - moneySum(a[1]).sales).map(([k, l]) => { const x = moneySum(l), [vn, pn] = k.split("|"); return `<tr><td>${esc(vn)}</td><td>${esc(pn)}</td><td class="num">${x.qty}</td><td class="num">${wonK(x.sales)}</td><td class="num">${wonK(x.profit)}</td></tr>` }).join("") || `<tr><td colspan="5" class="note">-</td></tr>`
   $("#moneyByDay").innerHTML = groups(o => orderDate(o).toLocaleDateString("ko-KR")).sort((a, b) => orderDate(b[1][0]) - orderDate(a[1][0])).slice(0, 31).map(([k, l]) => { const x = moneySum(l); return `<tr><td>${esc(k)}</td><td class="num">${x.n}</td><td class="num">${wonK(x.sales)}</td><td class="num">${wonK(x.profit)}</td></tr>` }).join("") || `<tr><td colspan="4" class="note">-</td></tr>`
 }
-$("#m_period").onchange = renderMoney; $("#m_channel").onchange = renderMoney
+$("#m_period").onchange = renderMoney; $("#m_channel").onchange = renderMoney; $("#m_kind").onchange = renderMoney
 
 // ---------- 주문 흐름 ----------
 function renderFlow() {
@@ -1699,7 +1727,7 @@ async function makePO(vid) {
 
 // ---------- 업체·상품 ----------
 function renderVendors() {
-  $("#vendorList").innerHTML = VENDORS.map(v => `<button data-v="${esc(v.id)}" class="${v.id === currentVendorId ? "on" : ""}">${esc(v.name)}</button>`).join("") + `<button data-v="__new">+ 새 업체</button>`
+  $("#vendorList").innerHTML = VENDORS.map(v => `<button data-v="${esc(v.id)}" class="${v.id === currentVendorId ? "on" : ""}">${esc(v.name)}${v.kind === "B2B" ? " · B2B" : ""}</button>`).join("") + `<button data-v="__new">+ 새 업체</button>`
   $$("#vendorList button").forEach(b => b.onclick = () => { currentVendorId = b.dataset.v; renderVendors() })
   const v = currentVendorId === "__new" ? { name: "", status: "협의 중", products: [{ name: "", supplyPrice: 0 }], order: { method: "이메일", email: "", cutoff: "", prepay: false, csChannel: "", fixedMessage: "" }, sender: { name: "", phone: "", zip: "", address: "" }, returnInfo: { sameAsSender: true }, extraInfo: "", photoIds: [] } : VENDORS.find(x => x.id === currentVendorId)
   if (!v) { $("#vendorForm").innerHTML = "<p class='note'>업체를 선택하세요.</p>"; return }
@@ -1710,7 +1738,11 @@ function renderVendors() {
     <div class="grid" style="margin-top:14px">
       <div><label>업체명</label><input id="v_name" value="${esc(v.name)}"></div>
       <div><label>거래 상태</label><select id="v_status">${["협의 중", "거래 중", "중지"].map(s => `<option ${s === v.status ? "selected" : ""}>${s}</option>`).join("")}</select></div>
+      <div><label>구분</label><select id="v_kind">${["산지직송", "B2B"].map(s => `<option ${s === (v.kind || "산지직송") ? "selected" : ""}>${s}</option>`).join("")}</select></div>
+      <div class="v_b2b"><label>상품에 쓸 브랜드명 <span class="note">(B2B · 비우면 브랜드 표시 안 함)</span></label><input id="v_brand" value="${esc(v.brandName || "")}" placeholder="예) 제철과일상회"></div>
+      <div class="v_b2b" style="grid-column:1/-1"><label>상세페이지 맨 끝 소개 문장 <span class="note">(B2B · 비우면 소개 칸 없음)</span></label><input id="v_brandtext" value="${esc(v.brandText || "")}" placeholder="예) 엄선한 제철 과일을 빠르게 보내 드립니다."></div>
     </div>
+    <p class="note v_b2b" style="margin-top:6px">B2B 업체 상품은 상품명·상세페이지에 '모아커머스'를 넣지 않습니다. 판매자 상호(쿠팡·네이버 판매자 이름)는 계속 모아커머스로 나옵니다.</p>
 
     <h3>상품·공급가</h3>
     <table><thead><tr><th>상품명(규격 포함)</th><th class="num">공급가(원)</th><th>쿠팡 옵션ID</th><th>네이버 옵션코드</th><th></th></tr></thead><tbody id="prodRows">
@@ -1771,6 +1803,8 @@ function renderVendors() {
   bindProdDel()
   $("#v_rsame").onchange = e => $("#v_rbox").classList.toggle("hidden", e.target.checked)
   $("#saveVendor").onclick = () => saveVendor(isNew)
+  const kindSync = () => $$(".v_b2b").forEach(el => el.style.display = $("#v_kind").value === "B2B" ? "" : "none")
+  $("#v_kind").onchange = kindSync; kindSync()
   if (!isNew) {
     $("#delVendor").onclick = async () => {
       if (!confirm(`'${v.name}' 업체와 사진을 삭제할까요? 되돌릴 수 없습니다.`)) return
@@ -1808,6 +1842,7 @@ async function saveVendor(isNew, quiet) {
   const products = $$("#prodRows tr").map(tr => ({ name: $(".p_name", tr).value.trim(), supplyPrice: Number($(".p_price", tr).value || 0), coupangItemId: ($(".p_cp", tr)?.value || "").trim(), naverItemId: ($(".p_nv", tr)?.value || "").trim() })).filter(p => p.name)
   const body = {
     name: $("#v_name").value.trim(), status: $("#v_status").value, products,
+    kind: $("#v_kind").value, brandName: $("#v_brand").value.trim(), brandText: $("#v_brandtext").value.trim(),
     order: { ...(prev.order || {}), method: $("#v_method").value, email: $("#v_email").value.trim(), cutoff: $("#v_cutoff").value, csChannel: $("#v_cs").value, fixedMessage: $("#v_fixed").value, prepay: $("#v_prepay").value === "1" },
     sender: { ...(prev.sender || {}), name: $("#v_sname").value.trim(), phone: $("#v_sphone").value.trim(), phoneSub: $("#v_sphone2").value.trim(), zip: $("#v_szip").value.trim(), address: $("#v_saddr").value.trim(), addressDetail: $("#v_saddr2").value.trim() },
     returnInfo: $("#v_rsame").checked ? { sameAsSender: true, name: "", phone: "", zip: "", address: "" } : { sameAsSender: false, name: $("#v_rname").value.trim(), phone: $("#v_rphone").value.trim(), zip: $("#v_rzip").value.trim(), address: $("#v_raddr").value.trim() },
