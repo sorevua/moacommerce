@@ -96,9 +96,16 @@ export async function publishDue() {
   const hook = env("MAKE_IG_URL")
   if (!hook) return { skipped: "인스타 연결 전" }
   const list: any[] = ((await P().get("posts", { type: "json" })) as any[]) || []
-  const due = list.filter((x) => x.channel === "instagram" && x.scheduleAt && !x.postedAt && !x.hold && !x.failed && new Date(x.scheduleAt).getTime() <= Date.now())
+  const all = list.filter((x) => x.channel === "instagram" && x.scheduleAt && !x.postedAt && !x.hold && !x.failed && !x.publishing && new Date(x.scheduleAt).getTime() <= Date.now())
+  // 예약 시간이 25분 넘게 지난 것은 올리지 않는다 (중복·뒤늦은 게시 방지)
+  const stale = all.filter((x) => Date.now() - new Date(x.scheduleAt).getTime() > 25 * 60e3)
+  for (const x of stale) x.failed = "예약 시간이 지나 올리지 않았습니다"
+  const due = all.filter((x) => !stale.includes(x)).slice(0, 1) // 한 번에 1개만
+  // 올리기 전에 먼저 '올리는 중'으로 저장 → 중간에 끊겨도 같은 글이 두 번 올라가지 않는다
+  for (const x of due) x.publishing = new Date().toISOString()
+  if (stale.length || due.length) await P().setJSON("posts", list)
   const out: any[] = []
-  for (const p of due.slice(0, 2)) {
+  for (const p of due) {
     const caption = [p.body, (p.tags || []).map((t: string) => "#" + t).join(" ")].filter(Boolean).join("\n\n").slice(0, 2150)
     try {
       let photos: string[] = (p.photos || []).slice(0, 10)
