@@ -11,7 +11,7 @@ const up100 = (x: number) => Math.ceil(x / 100) * 100
 const dn100 = (x: number) => Math.floor(x / 100) * 100
 const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
 
-export const PRICE_DEFAULT = { auto: true, minMargin: 0.1, undercut: 0.03, maxDropPerRun: 0.1, minSamples: 3 }
+export const PRICE_DEFAULT = { auto: false, minMargin: 0.1, undercut: 0.03, maxDropPerRun: 0.1, minSamples: 3 }
 export async function priceConfig() { return { ...PRICE_DEFAULT, ...(((await S().get("price-config", { type: "json" })) as any) || {}) } }
 
 // 한 상품의 시장가 조사
