@@ -47,6 +47,7 @@ export default async (req: Request) => {
         const p = list.find((x) => x.id === id)
         if (!p) return json({ error: "없는 글" }, 404)
         if (b.posted !== undefined) p.postedAt = b.posted ? now() : null
+        if (b.hold !== undefined) { p.hold = !!b.hold; if (!b.hold) p.failed = "" }
         if (b.url !== undefined) p.url = String(b.url).slice(0, 300)
         if (b.title !== undefined) p.title = String(b.title).slice(0, 200)
         if (b.body !== undefined) p.body = String(b.body).slice(0, 20000)
@@ -56,6 +57,16 @@ export default async (req: Request) => {
       if (m === "DELETE" && id) {
         await st().setJSON("posts", list.filter((x) => x.id !== id))
         return json({ ok: true })
+      }
+    }
+    if (res === "ig") {
+      const { igConfig } = await import("./_lib/insta.mts")
+      if (m === "GET") return json(await igConfig())
+      if (m === "PUT") {
+        const b: any = await req.json(), cur: any = await igConfig()
+        const v = { daily: b.daily === undefined ? cur.daily : !!b.daily, autoPublish: b.autoPublish === undefined ? cur.autoPublish : !!b.autoPublish, hour: Math.min(23, Math.max(6, Number(b.hour ?? cur.hour))) }
+        await st().setJSON("ig-config", v)
+        return json(await igConfig())
       }
     }
     if (res === "job" && id && m === "GET") return json((await st().get(`job-${id}`, { type: "json" })) || {})

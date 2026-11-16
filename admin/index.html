@@ -1416,12 +1416,13 @@ function renderPrice() {
 }
 
 // ---------- 승인함 (문의 답변·홍보 글) ----------
-let INQ = { list: [], last: null }
+let INQ = { list: [], last: null }, IG = { daily: true, autoPublish: true, hour: 19, connected: false }
 async function loadInbox() { try { INQ = await api("inquiries") } catch (e) { INQ = { list: [], last: null, error: e.message } } renderInbox(); try { renderHome() } catch {} }
 function renderInbox() {
   const box = $("#homeInbox"); if (!box) return
   const wait = (INQ.list || []).filter(q => q.status === "대기")
-  const posts = (PROMO.posts || []).filter(x => !x.postedAt).slice(0, 5)
+  const posts = (PROMO.posts || []).filter(x => !x.postedAt && !x.auto).slice(0, 5)
+  const igq = (PROMO.posts || []).filter(x => x.auto && !x.postedAt).slice(0, 3)
   const last = INQ.last
   box.innerHTML = `<div class="row"><h2 style="margin:0;font-size:24px">✅ 승인함</h2><span class="spacer"></span><button class="btn small" id="inqSync">문의 지금 가져오기</button></div>
     <p class="note" style="margin:6px 0 12px">쿠팡·네이버 문의를 30분마다 가져와 AI가 답변 초안을 써 둡니다. 읽어 보고 [승인]만 누르면 마켓에 등록됩니다.${last?.at ? ` · 마지막 확인 ${new Date(last.at).toLocaleString("ko-KR")}` : ""}</p>
@@ -1434,8 +1435,18 @@ function renderInbox() {
       ${q.check ? `<div class="warn" style="margin-bottom:8px">⚠ 확인 필요: ${esc(q.check)}</div>` : ""}
       <textarea class="inq_a" rows="5" placeholder="AI 초안을 쓰는 중입니다. 잠시 뒤 새로고침하거나 직접 쓰셔도 됩니다.">${esc(q.draft || "")}</textarea>
       <div class="row" style="margin-top:8px"><button class="btn accent inq_ok">승인하고 등록</button><button class="btn small inq_skip">건너뛰기</button><span class="note inq_st"></span></div></div>`).join("") : `<div class="okbox">답변할 문의가 없어요 👍</div>`}
+    <h3 style="margin:16px 0 6px">📸 인스타그램 자동 게시</h3>
+    <div class="row" style="gap:14px"><label style="margin:0;font-weight:600"><input type="checkbox" id="ig_daily" ${IG.daily ? "checked" : ""} style="width:auto"> 매일 게시물 자동 만들기</label><label style="margin:0;font-weight:600"><input type="checkbox" id="ig_auto" ${IG.autoPublish ? "checked" : ""} style="width:auto"> 승인 없이 예약 시간에 자동 게시</label><label style="margin:0;font-weight:600">게시 시간 <select id="ig_hour" style="width:auto">${[8, 12, 18, 19, 20, 21].map(h => `<option value="${h}" ${h === IG.hour ? "selected" : ""}>${h}시</option>`).join("")}</select></label><button class="btn small" id="ig_make">지금 하나 만들기</button></div>
+    ${IG.connected ? `<div class="note" style="margin-top:6px">✅ 인스타그램 연결됨</div>` : `<div class="warn" style="margin-top:8px">아직 인스타그램 계정이 연결되지 않아 자동 게시는 안 됩니다. 게시물은 매일 만들어 두니, 연결 전까지는 [글 복사]로 직접 올리세요.</div>`}
+    ${igq.map(x => `<div style="border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:10px"><div class="row"><div style="display:flex;gap:6px">${(x.photos || []).slice(0, 4).map(u => `<img src="${esc(u)}" loading="lazy" style="width:72px;height:72px;object-fit:cover;border-radius:8px">`).join("")}</div></div>
+      <div class="note" style="margin-top:6px">${esc(x.product || "")} · ${x.failed ? `<span style="color:var(--accent)">게시 실패: ${esc(x.failed)}</span>` : x.hold ? "보류 중 (자동 게시 안 함)" : "예약 " + new Date(x.scheduleAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+      <div style="white-space:pre-wrap;font-size:15px;margin:6px 0;max-height:150px;overflow:auto">${esc(x.body)}</div>
+      <div class="row"><button class="btn small" data-pcopy="${esc(x.id)}">글 복사</button><button class="btn small" data-ighold="${esc(x.id)}" data-h="${x.hold ? 0 : 1}">${x.hold ? "예약 게시로 되돌리기" : "게시 보류"}</button><button class="btn small" data-igdel="${esc(x.id)}">삭제</button></div></div>`).join("")}
     <h3 style="margin:16px 0 6px">📣 아직 안 올린 홍보 글 ${posts.length}개</h3>
     ${posts.length ? posts.map(x => `<div class="row" style="border-bottom:1px solid var(--line);padding:10px 0"><div style="flex:1"><b>${esc(PCH[x.channel] || x.channel)}</b> · ${esc(x.title || x.product || "")}</div><button class="btn small" data-pcopy="${esc(x.id)}">글 복사</button><button class="btn small" data-go="promo">보기</button></div>`).join("") : `<p class="note">대기 중인 홍보 글이 없습니다. [홍보]에서 사진만 넣으면 만들어 줍니다.</p>`}`
+  const igSave = async b => { IG = await api2("ig", { method: "PUT", body: JSON.stringify(b) }); toast("저장했어요") }
+  $("#ig_daily").onchange = e => igSave({ daily: e.target.checked }); $("#ig_auto").onchange = e => igSave({ autoPublish: e.target.checked }); $("#ig_hour").onchange = e => igSave({ hour: Number(e.target.value) })
+  $("#ig_make").onclick = async () => { await fetch("/.netlify/functions/insta-draft-background", { method: "POST", credentials: "same-origin", body: JSON.stringify({ force: true }) }); toast("게시물을 만드는 중… 1~2분 뒤에 나타납니다"); setTimeout(loadPromo, 60000); setTimeout(loadPromo, 120000) }
   $("#inqSync").onclick = async () => {
     toast("문의를 가져오는 중… 1~2분 걸립니다")
     await fetch("/.netlify/functions/inquiry-sync-background", { method: "POST", credentials: "same-origin", body: "{}" })
@@ -1452,6 +1463,8 @@ document.addEventListener("click", async e => {
   } else if (card && e.target.classList.contains("inq_skip")) {
     await api("inquiries/" + card.dataset.id + "/skip", { method: "POST" }).catch(() => {}); loadInbox()
   }
+  const ih = e.target.closest("[data-ighold]"); if (ih) { await api2("posts/" + ih.dataset.ighold, { method: "PUT", body: JSON.stringify({ hold: ih.dataset.h === "1" }) }); loadPromo() }
+  const idl = e.target.closest("[data-igdel]"); if (idl && confirm("이 게시물을 지울까요?")) { await api2("posts/" + idl.dataset.igdel, { method: "DELETE" }); loadPromo() }
   const pc = e.target.closest("[data-pcopy]")
   if (pc) { const x = (PROMO.posts || []).find(y => y.id === pc.dataset.pcopy); if (x) { await navigator.clipboard.writeText([x.title, x.body, (x.tags || []).map(t => "#" + t).join(" ")].filter(Boolean).join("\n\n")).catch(() => {}); toast("복사했어요. 붙여넣기만 하세요.") } }
 })
@@ -1486,6 +1499,7 @@ async function api2(path, opts = {}) {
 }
 async function loadPromo() {
   const [settings, status, posts] = await Promise.all([api2("settings"), api2("status"), api2("posts")]).catch(() => [{}, {}, []])
+  IG = await api2("ig").catch(() => IG)
   PROMO = { settings, status, posts }
   for (const k of ["openchat", "kakao", "instagram", "blog", "band", "brand", "voice"]) $("#ps_" + k).value = settings[k] || ""
   renderPromo(); renderHome(); try { renderInbox() } catch {}
