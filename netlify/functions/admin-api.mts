@@ -2,6 +2,7 @@ import type { Config, Context } from "@netlify/functions"
 import { getStore } from "@netlify/blobs"
 import { randomUUID } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
+import { priceConfig } from "./_lib/pricing.mts"
 import { listInquiries, answerInquiry, skipInquiry } from "./_lib/inquiries.mts"
 import { naverConfigured, naverConfirm, naverDispatch, syncNaverOrders } from "./_lib/naver.mts"
 import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS, changePrice, stopSale, resumeSale, updateProductContent, cleanTags, returnCenters, outboundPlaces, predictCategory, productHistory } from "./_lib/coupang.mts"
@@ -416,6 +417,17 @@ export default async (req: Request, context: Context) => {
         const r = await updateProductContent(String(sub), change)
         await logChange({ sellerProductId: sub, action: "content", fields: Object.keys(change) })
         return json({ ok: true, result: r?.code || "SUCCESS", note: "쿠팡 승인 후 반영됩니다. 배송·반품 정보는 그대로입니다." })
+      }
+    }
+
+    // 가격 엔진
+    if (res === "pricing") {
+      if (!id && method === "GET") return json({ cfg: await priceConfig(), report: (await settingsStore().get("price-report", { type: "json" })) || null, log: (await settingsStore().get("price-log", { type: "json" })) || [] })
+      if (id === "config" && method === "PUT") {
+        const b = await req.json(), cur = await priceConfig()
+        const v = { ...cur, auto: b.auto === undefined ? cur.auto : !!b.auto, minMargin: Math.min(0.5, Math.max(0.1, Number(b.minMargin ?? cur.minMargin))) }
+        await settingsStore().setJSON("price-config", v)
+        return json(v)
       }
     }
 

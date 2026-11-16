@@ -270,6 +270,7 @@ nav button .ic{font-size:18px}
 
     <!-- 조사 -->
     <section id="tab-research" class="hidden">
+      <div class="card" id="priceCard"><h2>💹 가격 비교·자동 조정</h2><p class="note">불러오는 중…</p></div>
       <div class="card">
         <h2 style="font-size:22px">🔎 공급처 조사</h2>
         <p>AI가 <b>2시간마다</b> 제철 과일 공급처를 찾아 <b>공급처 시트</b>에 기록하고 있습니다. 업체에 연락은 하지 않고 기록만 합니다.</p>
@@ -367,7 +368,7 @@ async function loadAll() {
   if (!currentVendorId && VENDORS[0]) currentVendorId = VENDORS[0].id
   ORDERS = ORDERS || []
   renderVendorSelects(); renderVendors(); renderSettings(); renderCp()
-  ORDERS = await api("orders"); renderOrders(); renderMoney(); loadNaver(); loadInbox()
+  ORDERS = await api("orders"); renderOrders(); renderMoney(); loadNaver(); loadInbox(); loadPrice()
   await cpP
   loadPromo()
 }
@@ -1388,6 +1389,30 @@ function renderFlow() {
       ${st("⑤ 정산·수익", "💰", "쿠팡이 수수료를 빼고 정산 → 업체에 공급가 지급 → 남는 돈이 순이익. [수익] 탭에서 확인.", false)}
     </div>
     <div class="note" style="margin-top:8px">${a ? `지금 할 일: 새 주문 ${a}건 발주서 보내기` : b ? `지금 할 일: 송장번호 ${b}건 받아서 입력하기` : "지금 처리할 주문이 없습니다."}${sync ? ` · 마지막 쿠팡 주문 확인 ${new Date(sync).toLocaleString("ko-KR")}` : ""}</div>`
+}
+
+// ---------- 가격 엔진 ----------
+let PRICE = { cfg: {}, report: null, log: [] }
+async function loadPrice() { try { PRICE = await api("pricing") } catch (e) { PRICE = { cfg: {}, report: null, log: [], error: e.message } } renderPrice() }
+function renderPrice() {
+  const box = $("#priceCard"); if (!box) return
+  const r = PRICE.report, c = PRICE.cfg || {}, w = n => n ? Number(n).toLocaleString("ko-KR") : "-"
+  const cell = x => !x ? "-" : `${w(x.cur)}원<br><span class="note" style="color:${x.applied ? "var(--ok)" : x.error || /⚠/.test(x.action) ? "var(--accent)" : "var(--mute)"}">${esc(x.action || "")}${x.applied ? " ✅적용" : x.target && !c.auto ? " (자동 꺼짐)" : ""}${x.error ? " · " + esc(x.error) : ""}${x.suggest && !x.target ? ` · 참고가 ${w(x.suggest)}원` : ""}</span>`
+  box.innerHTML = `<div class="row"><h2 style="margin:0;font-size:22px">💹 가격 비교·자동 조정</h2><span class="spacer"></span>
+      <label style="font-weight:600;margin:0"><input type="checkbox" id="pr_auto" ${c.auto ? "checked" : ""} style="width:auto"> 자동 인하 켜기</label>
+      <button class="btn small dark" id="pr_run">지금 조사</button></div>
+    <p class="note" style="margin:8px 0">매일 새벽 AI가 같은 품종·중량 상품의 온라인 판매가를 찾아 비교합니다. 우리 가격이 시장 중간값보다 비싸면 <b>중간값보다 3% 싸게</b> 내리되, <b>최소 마진 ${Math.round((c.minMargin || 0.1) * 100)}%</b>(공급가+수수료 기준) 아래로는 절대 안 내리고 하루 최대 10%만 내립니다. 올리는 것은 자동으로 하지 않고 참고가만 보여 줍니다. 비교 자료가 3개 미만이면 손대지 않습니다.</p>
+    ${PRICE.error ? `<div class="warn">${esc(PRICE.error)}</div>` : ""}
+    ${r ? `<div class="note">${r.running ? "⏳ 조사 중… (상품 수에 따라 5~10분)" : "마지막 조사 " + new Date(r.at).toLocaleString("ko-KR")}${(r.changes || []).length ? ` · 변경 ${r.changes.length}건` : ""}</div>${(r.errors || []).length ? `<div class="warn">${r.errors.map(esc).join("<br>")}</div>` : ""}
+    <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>상품</th><th class="num">공급가</th><th class="num">시장 중간값</th><th>쿠팡 (최소마진가)</th><th>네이버 (최소마진가)</th></tr></thead><tbody>
+    ${(r.rows || []).map(x => `<tr><td><b>${esc(x.product)}</b><br><span class="note">${esc(x.vendor)}${x.note ? " · " + esc(x.note) : ""}</span>${(x.samples || []).length ? `<details><summary class="note">비교 ${x.samples.length}개 보기</summary>${x.samples.map(s => `<div class="note">${esc(s.market)} ${esc(s.seller)} ${w(s.price)}원 ${s.kg ? s.kg + "kg" : ""} ${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">출처</a>` : ""}</div>`).join("")}</details>` : ""}</td><td class="num">${w(x.supply)}</td><td class="num">${x.marketMedian ? w(x.marketMedian) + `<br><span class="note">${x.n}개 · 최저 ${w(x.marketMin)}</span>` : `<span class="note">자료 없음</span>`}</td><td>${cell(x.cp)}<br><span class="note">최소 ${w(x.floorCp)}</span></td><td>${cell(x.nv)}<br><span class="note">최소 ${w(x.floorNv)}</span></td></tr>`).join("") || `<tr><td colspan="5" class="note">아직 결과가 없습니다.</td></tr>`}
+    </tbody></table></div>` : `<p class="note">아직 조사한 적이 없습니다. [지금 조사]를 누르세요.</p>`}
+    ${(PRICE.log || []).length ? `<details style="margin-top:10px"><summary style="font-weight:700;cursor:pointer">자동 변경 기록 ${PRICE.log.length}건</summary>${PRICE.log.slice(0, 50).map(l => `<div class="note">${new Date(l.at).toLocaleString("ko-KR")} · ${esc(l.text)}</div>`).join("")}</details>` : ""}`
+  $("#pr_auto").onchange = async e => { PRICE.cfg = await api("pricing/config", { method: "PUT", body: JSON.stringify({ auto: e.target.checked }) }); toast(e.target.checked ? "자동 인하를 켰습니다." : "자동 인하를 껐습니다. 조사만 합니다."); renderPrice() }
+  $("#pr_run").onclick = async () => {
+    await fetch("/.netlify/functions/price-run-background", { method: "POST", credentials: "same-origin", body: "{}" })
+    toast("가격 조사를 시작했습니다. 5~10분 걸립니다."); const h = setInterval(async () => { await loadPrice(); if (!PRICE.report?.running) clearInterval(h) }, 15000); setTimeout(loadPrice, 4000)
+  }
 }
 
 // ---------- 승인함 (문의 답변·홍보 글) ----------
