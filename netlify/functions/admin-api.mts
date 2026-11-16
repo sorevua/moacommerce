@@ -2,6 +2,7 @@ import type { Config, Context } from "@netlify/functions"
 import { getStore } from "@netlify/blobs"
 import { randomUUID } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
+import { listInquiries, answerInquiry, skipInquiry } from "./_lib/inquiries.mts"
 import { naverConfigured, naverConfirm, naverDispatch, syncNaverOrders } from "./_lib/naver.mts"
 import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS, changePrice, stopSale, resumeSale, updateProductContent, cleanTags, returnCenters, outboundPlaces, predictCategory, productHistory } from "./_lib/coupang.mts"
 
@@ -416,6 +417,13 @@ export default async (req: Request, context: Context) => {
         await logChange({ sellerProductId: sub, action: "content", fields: Object.keys(change) })
         return json({ ok: true, result: r?.code || "SUCCESS", note: "쿠팡 승인 후 반영됩니다. 배송·반품 정보는 그대로입니다." })
       }
+    }
+
+    // 고객 문의 (승인함)
+    if (res === "inquiries") {
+      if (!id && method === "GET") return json(await listInquiries())
+      if (id && sub === "answer" && method === "POST") { const b = await req.json(); try { return json(await answerInquiry(id, b.answer)) } catch (e: any) { return json({ error: String(e?.message || e) }, 400) } }
+      if (id && sub === "skip" && method === "POST") return json(await skipInquiry(id))
     }
 
     // 네이버

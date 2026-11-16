@@ -22,7 +22,7 @@ export default async (req: Request) => {
         const b: any = await req.json()
         const clean = (v: any) => String(v || "").trim().slice(0, 300)
         const ok = (u: string) => !u || /^https:\/\/[^\s"'<>]+$/.test(u)
-        const v = { openchat: clean(b.openchat), kakao: clean(b.kakao), instagram: clean(b.instagram), blog: clean(b.blog), band: clean(b.band), brand: clean(b.brand) || "모아커머스" }
+        const v = { openchat: clean(b.openchat), kakao: clean(b.kakao), instagram: clean(b.instagram), blog: clean(b.blog), band: clean(b.band), brand: clean(b.brand) || "모아커머스", voice: String(b.voice || "").trim().slice(0, 3000) }
         for (const k of ["openchat", "kakao", "instagram", "blog", "band"] as const) if (!ok(v[k])) return json({ error: `${k} 주소는 https:// 로 시작해야 합니다.` }, 400)
         await st().setJSON("settings", v)
         return json(v)

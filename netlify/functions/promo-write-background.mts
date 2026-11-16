@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { randomUUID } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
 import { aiCreate } from "./_lib/ai.mts"
+import { HUMAN_RULES, aiTells } from "./_lib/human.mts"
 
 const st = () => getStore({ name: "admin-promo", consistency: "strong" })
 const now = () => new Date().toISOString()
@@ -28,7 +29,8 @@ const SYSTEM = `당신은 한국 농산물 직거래 홍보 글을 쓰는 전문
 - 측정값은 "측정 예시"로 쓰고 과일마다 차이가 있다고 붙인다.
 - 가격은 판매자가 준 경우에만 쓴다.
 - 판매자가 준 링크(오픈채팅·카카오톡·쿠팡 등)는 그대로 정확히 넣는다. 다른 링크를 만들지 않는다.
-- 다른 판매자·브랜드 비방 금지. 자연스러운 사람 말투, 반복 문장 금지.
+- 다른 판매자·브랜드 비방 금지. 반복 문장 금지.
+${HUMAN_RULES}
 출력은 아래 형식 그대로, 다른 말 없이:
 @@TITLE
 제목
@@ -56,7 +58,7 @@ export default async (req: Request) => {
     ].filter(Boolean)
     const content: any[] = [{
       type: "text",
-      text: `채널 안내:\n${GUIDE[channel]}\n\n판매자 브랜드: ${settings.brand || "모아커머스"}\n상품: ${job.product || ""}\n판매자가 준 사실:\n${job.facts || "(없음)"}\n가격 안내: ${job.price || "(쓰지 말 것)"}\n넣을 링크:\n${links.join("\n") || "(없음)"}\n사진 수: ${photos.length}장`,
+      text: `채널 안내:\n${GUIDE[channel]}\n\n판매자 브랜드: ${settings.brand || "모아커머스"}\n상품: ${job.product || ""}\n판매자가 준 사실:\n${job.facts || "(없음)"}\n가격 안내: ${job.price || "(쓰지 말 것)"}\n넣을 링크:\n${links.join("\n") || "(없음)"}\n사진 수: ${photos.length}장${settings.voice ? `\n\n판매자 말투 샘플(말투만 참고):\n${settings.voice}` : ""}`,
     }]
     for (let i = 0; i < photos.length; i++) {
       try {
@@ -67,7 +69,16 @@ export default async (req: Request) => {
     }
     const client = new Anthropic()
     const msg: any = await aiCreate(client, { model: process.env.AI_MODEL || "claude-sonnet-5-5", max_tokens: 6000, system: SYSTEM, messages: [{ role: "user", content }] })
-    const text = msg.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
+    let text = msg.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
+    // AI 말버릇이 남았으면 한 번 더 고쳐 쓴다 (사실·숫자·링크는 그대로)
+    const tells = aiTells(text)
+    if (tells.length) {
+      try {
+        const fix: any = await aiCreate(client, { model: process.env.AI_MODEL || "claude-sonnet-5-5", max_tokens: 6000, system: SYSTEM, messages: [{ role: "user", content: `아래 글에 광고 문구 같은 표현이 남아 있다: ${tells.join(", ")}\n이 표현들을 없애고 사람이 쓴 말투로 다시 써라. 사실·숫자·링크·[사진n] 표시는 하나도 바꾸지 말고, 형식(@@TITLE/@@BODY/@@TAGS)도 그대로.\n\n${text}` }] })
+        const t2 = fix.content.map((b: any) => (b.type === "text" ? b.text : "")).join("")
+        if (sec(t2, "BODY")) text = t2
+      } catch {}
+    }
     const post = {
       id: randomUUID(),
       at: now(),

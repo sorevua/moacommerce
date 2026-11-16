@@ -145,6 +145,7 @@ nav button .ic{font-size:18px}
           <button class="btn big" data-go="orders">📦 주문 넣기</button>
         </div>
       </div>
+      <div class="card" id="homeInbox"><h2>✅ 승인함</h2><p class="note">불러오는 중…</p></div>
       <div class="card" id="homeTodo"></div>
     </section>
 
@@ -261,6 +262,7 @@ nav button .ic{font-size:18px}
           <div><label>밴드 주소</label><input id="ps_band" placeholder="https://band.us/..."></div>
           <div><label>브랜드 이름</label><input id="ps_brand" placeholder="모아커머스"></div>
         </div>
+        <div style="margin-top:12px"><label>내 말투 샘플 <span class="note">(대표님이 평소 쓴 카톡 공지·인스타 글 2~3개를 붙여넣으면 AI가 이 말투로 씁니다. 비워도 됩니다)</span></label><textarea id="ps_voice" rows="5" placeholder="예) 오늘 귤 들어왔어요~ 상자 열자마자 향이 확 올라오네요. 이번 건 좀 잘아요. 대신 달아요 ㅎㅎ"></textarea></div>
         <div class="row" style="margin-top:12px"><button class="btn dark" id="ps_save">저장</button></div>
         <div class="warn" style="margin-top:12px">⚠ 쿠팡·네이버 <b>상세페이지</b>에는 오픈채팅·카톡 주소를 넣으면 외부거래 유도로 제재받습니다. 이 주소들은 블로그·인스타·밴드·당근 같은 <b>내 채널</b> 글에만 들어갑니다.</div>
       </div>
@@ -365,7 +367,7 @@ async function loadAll() {
   if (!currentVendorId && VENDORS[0]) currentVendorId = VENDORS[0].id
   ORDERS = ORDERS || []
   renderVendorSelects(); renderVendors(); renderSettings(); renderCp()
-  ORDERS = await api("orders"); renderOrders(); renderMoney(); loadNaver()
+  ORDERS = await api("orders"); renderOrders(); renderMoney(); loadNaver(); loadInbox()
   await cpP
   loadPromo()
 }
@@ -1388,6 +1390,47 @@ function renderFlow() {
     <div class="note" style="margin-top:8px">${a ? `지금 할 일: 새 주문 ${a}건 발주서 보내기` : b ? `지금 할 일: 송장번호 ${b}건 받아서 입력하기` : "지금 처리할 주문이 없습니다."}${sync ? ` · 마지막 쿠팡 주문 확인 ${new Date(sync).toLocaleString("ko-KR")}` : ""}</div>`
 }
 
+// ---------- 승인함 (문의 답변·홍보 글) ----------
+let INQ = { list: [], last: null }
+async function loadInbox() { try { INQ = await api("inquiries") } catch (e) { INQ = { list: [], last: null, error: e.message } } renderInbox(); try { renderHome() } catch {} }
+function renderInbox() {
+  const box = $("#homeInbox"); if (!box) return
+  const wait = (INQ.list || []).filter(q => q.status === "대기")
+  const posts = (PROMO.posts || []).filter(x => !x.postedAt).slice(0, 5)
+  const last = INQ.last
+  box.innerHTML = `<div class="row"><h2 style="margin:0;font-size:24px">✅ 승인함</h2><span class="spacer"></span><button class="btn small" id="inqSync">문의 지금 가져오기</button></div>
+    <p class="note" style="margin:6px 0 12px">쿠팡·네이버 문의를 30분마다 가져와 AI가 답변 초안을 써 둡니다. 읽어 보고 [승인]만 누르면 마켓에 등록됩니다.${last?.at ? ` · 마지막 확인 ${new Date(last.at).toLocaleString("ko-KR")}` : ""}</p>
+    ${(last?.errors || []).length ? `<div class="warn" style="margin-bottom:10px">${last.errors.map(esc).join("<br>")}</div>` : ""}
+    ${INQ.error ? `<div class="warn">${esc(INQ.error)}</div>` : ""}
+    <h3 style="margin:10px 0 6px">💬 답변 기다리는 문의 ${wait.length}건</h3>
+    ${wait.length ? wait.map(q => `<div class="inq" data-id="${esc(q.id)}" style="border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px">
+      <div class="note"><b>${esc(q.channel)}</b> · ${esc(q.kind)} · ${esc(q.product || "")}${q.askedAt ? " · " + esc(String(q.askedAt).slice(0, 16).replace("T", " ")) : ""}</div>
+      <div style="font-size:16px;margin:8px 0;white-space:pre-wrap">${esc(q.question)}</div>
+      ${q.check ? `<div class="warn" style="margin-bottom:8px">⚠ 확인 필요: ${esc(q.check)}</div>` : ""}
+      <textarea class="inq_a" rows="5" placeholder="AI 초안을 쓰는 중입니다. 잠시 뒤 새로고침하거나 직접 쓰셔도 됩니다.">${esc(q.draft || "")}</textarea>
+      <div class="row" style="margin-top:8px"><button class="btn accent inq_ok">승인하고 등록</button><button class="btn small inq_skip">건너뛰기</button><span class="note inq_st"></span></div></div>`).join("") : `<div class="okbox">답변할 문의가 없어요 👍</div>`}
+    <h3 style="margin:16px 0 6px">📣 아직 안 올린 홍보 글 ${posts.length}개</h3>
+    ${posts.length ? posts.map(x => `<div class="row" style="border-bottom:1px solid var(--line);padding:10px 0"><div style="flex:1"><b>${esc(PCH[x.channel] || x.channel)}</b> · ${esc(x.title || x.product || "")}</div><button class="btn small" data-pcopy="${esc(x.id)}">글 복사</button><button class="btn small" data-go="promo">보기</button></div>`).join("") : `<p class="note">대기 중인 홍보 글이 없습니다. [홍보]에서 사진만 넣으면 만들어 줍니다.</p>`}`
+  $("#inqSync").onclick = async () => {
+    toast("문의를 가져오는 중… 1~2분 걸립니다")
+    await fetch("/.netlify/functions/inquiry-sync-background", { method: "POST", credentials: "same-origin", body: "{}" })
+    setTimeout(loadInbox, 20000); setTimeout(loadInbox, 60000)
+  }
+}
+document.addEventListener("click", async e => {
+  const card = e.target.closest(".inq")
+  if (card && e.target.classList.contains("inq_ok")) {
+    const st = $(".inq_st", card), a = $(".inq_a", card).value.trim()
+    if (!a) return toast("답변을 입력하세요.")
+    e.target.disabled = true; st.textContent = "등록 중…"
+    try { await api("inquiries/" + card.dataset.id + "/answer", { method: "POST", body: JSON.stringify({ answer: a }) }); toast("답변을 등록했습니다."); loadInbox() } catch (err) { st.textContent = err.message; e.target.disabled = false }
+  } else if (card && e.target.classList.contains("inq_skip")) {
+    await api("inquiries/" + card.dataset.id + "/skip", { method: "POST" }).catch(() => {}); loadInbox()
+  }
+  const pc = e.target.closest("[data-pcopy]")
+  if (pc) { const x = (PROMO.posts || []).find(y => y.id === pc.dataset.pcopy); if (x) { await navigator.clipboard.writeText([x.title, x.body, (x.tags || []).map(t => "#" + t).join(" ")].filter(Boolean).join("\n\n")).catch(() => {}); toast("복사했어요. 붙여넣기만 하세요.") } }
+})
+
 // ---------- 홈 ----------
 function renderHome() {
   const os = ORDERS || [], items = (CPP.products || []).flatMap(p => p.items || [])
@@ -1397,7 +1440,7 @@ function renderHome() {
   const notPosted = (PROMO.posts || []).filter(x => !x.postedAt).length
   const tile = (n, t, go, color) => `<button class="tile" data-go="${go}"><div class="n" style="color:${color || "var(--ink)"}">${n}</div><div class="t">${t}</div></button>`
   const mm = moneySum(os.filter(o => o.status !== "취소" && inPeriod(orderDate(o), "month")))
-  $("#homeTiles").innerHTML = tile(wonK(mm.profit), "이번 달 순이익 (추정)", "money", "var(--ok)") + tile(newO, "새 주문 (발주 필요)", "orders", newO ? "var(--accent)" : "") + tile(poDone, "송장 입력 기다림", "orders") + tile(onSale, "판매 중 옵션", "coupang", "var(--ok)") + tile(off, "판매중지 옵션", "coupang") + tile(promoOn, "진행 중인 홍보", "promo") + tile(notPosted, "아직 안 올린 홍보 글", "promo", notPosted ? "var(--warn)" : "")
+  $("#homeTiles").innerHTML = tile(wonK(mm.profit), "이번 달 순이익 (추정)", "money", "var(--ok)") + tile(newO, "새 주문 (발주 필요)", "orders", newO ? "var(--accent)" : "") + tile((INQ.list || []).filter(q => q.status === "대기").length, "답변할 문의", "home", (INQ.list || []).some(q => q.status === "대기") ? "var(--accent)" : "") + tile(poDone, "송장 입력 기다림", "orders") + tile(onSale, "판매 중 옵션", "coupang", "var(--ok)") + tile(off, "판매중지 옵션", "coupang") + tile(promoOn, "진행 중인 홍보", "promo") + tile(notPosted, "아직 안 올린 홍보 글", "promo", notPosted ? "var(--warn)" : "")
   const todo = []
   if (newO) todo.push(`📦 새 주문 ${newO}건 → [주문]에서 발주서 보내기`)
   if (poDone) todo.push(`🚚 송장번호 ${poDone}건 입력하기`)
@@ -1419,8 +1462,8 @@ async function api2(path, opts = {}) {
 async function loadPromo() {
   const [settings, status, posts] = await Promise.all([api2("settings"), api2("status"), api2("posts")]).catch(() => [{}, {}, []])
   PROMO = { settings, status, posts }
-  for (const k of ["openchat", "kakao", "instagram", "blog", "band", "brand"]) $("#ps_" + k).value = settings[k] || ""
-  renderPromo(); renderHome()
+  for (const k of ["openchat", "kakao", "instagram", "blog", "band", "brand", "voice"]) $("#ps_" + k).value = settings[k] || ""
+  renderPromo(); renderHome(); try { renderInbox() } catch {}
 }
 function renderPromo() {
   $("#pw_ch").innerHTML = Object.entries(PCH).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")
@@ -1473,7 +1516,7 @@ $("#promoPosts").addEventListener("click", async e => {
   if (e.target.closest("[data-pdel]")) { if (!confirm("이 글을 지울까요?")) return; await api2("posts/" + p.id, { method: "DELETE" }); return loadPromo() }
 })
 $("#ps_save").onclick = async () => {
-  try { const b = {}; for (const k of ["openchat", "kakao", "instagram", "blog", "band", "brand"]) b[k] = $("#ps_" + k).value.trim(); PROMO.settings = await api2("settings", { method: "PUT", body: JSON.stringify(b) }); toast("저장했어요") } catch (err) { toast(err.message) }
+  try { const b = {}; for (const k of ["openchat", "kakao", "instagram", "blog", "band", "brand", "voice"]) b[k] = $("#ps_" + k).value.trim(); PROMO.settings = await api2("settings", { method: "PUT", body: JSON.stringify(b) }); toast("저장했어요") } catch (err) { toast(err.message) }
 }
 $("#pw_files").onchange = async e => {
   const files = [...e.target.files].slice(0, 10 - pwPhotos.length); if (!files.length) return

@@ -46,3 +46,13 @@ export function isLoggedIn(req: Request): boolean {
   if (a.length !== b.length || !timingSafeEqual(a, b)) return false
   return Number(payload) > Date.now()
 }
+
+// 서버 안에서만 쓰는 호출(예약 작업 → 백그라운드 작업) 확인용
+export function internalKey(): string {
+  const key = secret()
+  return key ? sign("internal-job", key) : ""
+}
+export function isInternal(req: Request): boolean {
+  const k = internalKey()
+  return !!k && req.headers.get("x-internal") === k
+}
