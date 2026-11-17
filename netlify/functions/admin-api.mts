@@ -3,7 +3,9 @@ import { getStore } from "@netlify/blobs"
 import { randomUUID } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
 import { priceConfig } from "./_lib/pricing.mts"
-import { luckyConfigured, luckyWallet, luckyProducts } from "./_lib/luckyfresh.mts"
+import { luckyConfigured, luckyWallet, luckyProducts, luckyPlaceOrder } from "./_lib/luckyfresh.mts"
+import { registerInvoice } from "./_lib/invoice.mts"
+import { syncLuckyOrders } from "./_lib/lucky-sync.mts"
 import { listInquiries, answerInquiry, skipInquiry } from "./_lib/inquiries.mts"
 import { naverConfigured, naverConfirm, naverDispatch, syncNaverOrders } from "./_lib/naver.mts"
 import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS, changePrice, stopSale, resumeSale, updateProductContent, cleanTags, returnCenters, outboundPlaces, predictCategory, productHistory } from "./_lib/coupang.mts"
@@ -456,6 +458,29 @@ export default async (req: Request, context: Context) => {
         const p: any = await luckyProducts(true); await applyPrices(p.data?.products || [])
         return json({ ok: true, at: p.at })
       }
+      // 주문 넣기: dryRun 이면 금액·잔액만 확인하고 아무것도 만들지 않는다. 실제 발주는 관리자가 버튼을 눌렀을 때만.
+      if (id === "order" && method === "POST") {
+        const { orderId, dryRun } = await req.json()
+        const o: any = await orders().get(String(orderId), { type: "json" })
+        if (!o) return json({ error: "주문을 찾을 수 없습니다." }, 404)
+        if (o.status === "취소") return json({ error: "취소된 주문입니다." }, 400)
+        const v = await findVendor()
+        if (!v || o.vendorId !== v.id) return json({ error: "행운프레시 상품 주문이 아닙니다." }, 400)
+        const r: any = await luckyPlaceOrder(o, v, !!dryRun)
+        const lines: any[] = r?.orders || []
+        const sum = { total: lines.reduce((a, l) => a + Number(l.price || 0), 0), insufficientBalance: !!r?.insufficientBalance, requiredAmount: Number(r?.requiredAmount || 0), message: r?.message || "", productName: lines[0]?.productName, optionName: lines[0]?.productOptionName }
+        if (dryRun) return json({ dryRun: true, ...sum })
+        o.lucky = { orderIds: lines.map((l) => l.id).filter(Boolean), total: sum.total, status: lines[0]?.status || "발주 대기", paymentStatus: lines[0]?.paymentStatus || (sum.insufficientBalance ? "결제 대기" : "결제 완료"), requiredAmount: sum.requiredAmount, at: now() }
+        o.status = "발주완료"; o.updatedAt = now()
+        // 마켓에 발주확인(상품준비중) 처리
+        try {
+          if (o.market?.name === "coupang" && !o.market.acknowledged && coupangConfigured()) { await acknowledge([o.market.shipmentBoxId]); o.market.acknowledged = true }
+          if (o.market?.name === "naver" && !o.market.acknowledged && naverConfigured()) { await naverConfirm([o.market.productOrderId]); o.market.acknowledged = true }
+        } catch (e: any) { o.lucky.ackError = String(e?.message || e) }
+        await orders().setJSON(o.id, o)
+        return json({ ...sum, order: o })
+      }
+      if (id === "sync" && method === "POST") return json(await syncLuckyOrders())
       if (id === "import" && method === "POST") {
         const body = await req.json()
         const want = new Set<string>((body.optionIds || []).map(String)), drop = new Set<string>((body.removeIds || []).map(String))
@@ -515,39 +540,11 @@ export default async (req: Request, context: Context) => {
     // 송장 등록 (쿠팡 주문이면 쿠팡에도 업로드)
     if (res === "invoice" && method === "POST") {
       const { orderId, courier, invoiceNumber } = await req.json()
-      const o: any = await orders().get(orderId, { type: "json" })
-      if (!o) return json({ error: "주문을 찾을 수 없습니다." }, 404)
-      const num = String(invoiceNumber || "").replace(/\D/g, "")
-      if (!courier || !num) return json({ error: "택배사와 송장번호를 입력하세요." }, 400)
-      if (o.market?.name === "coupang") {
-        if (!coupangConfigured()) return json({ error: "쿠팡 API 키가 아직 설정되지 않았습니다." }, 400)
-        if (!o.market.acknowledged) {
-          const a = await acknowledge([o.market.shipmentBoxId])
-          const r = a?.data?.responseList?.[0]
-          if (r && !r.succeed && !/INSTRUCT|상품준비중/.test(String(r.resultMessage || ""))) {
-            return json({ error: "쿠팡 상품준비중 처리 실패: " + (r.resultMessage || r.resultCode) }, 400)
-          }
-          o.market.acknowledged = true
-        }
-        const up = await uploadInvoice([{ shipmentBoxId: o.market.shipmentBoxId, orderId: o.market.orderId, vendorItemId: o.market.vendorItemId, courier, invoiceNumber: num }])
-        const r = up?.data?.responseList?.[0]
-        if (!r?.succeed) return json({ error: "쿠팡 송장 등록 실패: " + (r?.resultMessage || r?.resultCode || up?.data?.responseMessage || "알 수 없음") }, 400)
-      }
-      if (o.market?.name === "naver") {
-        if (!naverConfigured()) return json({ error: "네이버 API 키가 아직 설정되지 않았습니다." }, 400)
-        if (!o.market.acknowledged) { await naverConfirm([o.market.productOrderId]).catch(() => null); o.market.acknowledged = true }
-        const up: any = await naverDispatch(o.market.productOrderId, courier, num)
-        const fail = up?.data?.failProductOrderInfos?.[0]
-        if (fail) return json({ error: "네이버 송장 등록 실패: " + (fail.message || fail.code || "알 수 없음") }, 400)
-      }
-      o.invoice = { courier, courierName: COURIERS[courier] || courier, number: num, at: now() }
-      o.status = "발송"
-      o.updatedAt = now()
-      await orders().setJSON(o.id, o)
-      return json(o)
+      const r = await registerInvoice(orderId, courier, invoiceNumber)
+      if (r.error) return json({ error: r.error }, r.error.includes("찾을 수 없") ? 404 : 400)
+      return json(r.order)
     }
 
-    // 주문
     if (res === "orders") {
       if (!id && method === "GET") {
         const { blobs } = await orders().list()

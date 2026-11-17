@@ -1743,6 +1743,35 @@ function filteredOrders() {
   const fv = $("#f_vendor").value, fs = $("#f_status").value
   return ORDERS.filter(o => (!fv || o.vendorId === fv) && (!fs || o.status === fs))
 }
+// 행운프레시(B2B) 주문인지: 업체가 행운프레시이고, 상품이 옵션과 연결돼 있고, 아직 발주 전
+function lkCan(o) {
+  if (o.status !== "접수" || o.lucky) return false
+  const v = VENDORS.find(x => x.id === o.vendorId)
+  return !!(v?.lucky && (v.products || []).some(p => p.name === o.productName && p.luckyOptionId))
+}
+// 먼저 금액만 확인(아무것도 만들지 않음) → 확인을 누르면 실제 발주
+async function lkOrder(list) {
+  if (!list.length) return
+  try {
+    toast("금액 확인 중…")
+    let total = 0, need = 0; const lines = []
+    for (const o of list) {
+      const r = await api("lucky/order", { method: "POST", body: JSON.stringify({ orderId: o.id, dryRun: true }) })
+      total += r.total; need = Math.max(need, r.requiredAmount || 0)
+      lines.push(`· ${o.recipientName} — ${r.productName || o.productName} ${r.optionName || ""} × ${o.qty} = ${won(r.total)}원`)
+    }
+    const msg = `행운프레시에 ${list.length}건을 발주합니다.\n\n${lines.slice(0, 12).join("\n")}${lines.length > 12 ? `\n… 외 ${lines.length - 12}건` : ""}\n\n합계 ${won(total)}원 (예치금에서 결제)\n${need > 0 ? `⚠ 예치금이 부족합니다. 발주는 접수되고 '결제 대기'로 남습니다. 행운프레시에서 ${won(need)}원 이상 충전하면 자동 결제됩니다. (7일 안에 미결제 시 자동 취소)` : "예치금 잔액으로 바로 결제됩니다."}\n\n발주할까요?`
+    if (!confirm(msg)) return toast("발주하지 않았습니다.")
+    let ok = 0, wait = 0, fail = []
+    for (const o of list) {
+      try { const r = await api("lucky/order", { method: "POST", body: JSON.stringify({ orderId: o.id }) }); Object.assign(o, r.order); ok++; if (r.insufficientBalance) wait++ }
+      catch (e) { fail.push(`${o.recipientName}: ${e.message}`) }
+    }
+    renderOrders()
+    if (fail.length) alert(`발주 ${ok}건 완료, ${fail.length}건 실패\n\n${fail.join("\n")}`)
+    else toast(wait ? `발주 ${ok}건 접수 — 결제 대기 ${wait}건. 예치금을 충전하세요.` : `발주 ${ok}건 완료. 송장은 자동으로 들어옵니다.`)
+  } catch (e) { alert("발주 전 확인에서 멈췄습니다 (아무것도 발주되지 않았습니다).\n\n" + e.message) }
+}
 function renderOrders() {
   try { renderFlow(); renderMoney(); renderHome() } catch (e) { console.error(e) }
   const list = filteredOrders()
@@ -1757,12 +1786,19 @@ function renderOrders() {
     <td class="hide-m">${esc(o.recipientAddress)}${o.message ? `<br><span class="note">요청: ${esc(o.message)}</span>` : ""}</td>
     <td><select data-id="${esc(o.id)}" class="ostatus" style="width:auto;padding:4px 6px">${["접수", "발주완료", "발송", "취소"].map(s => `<option ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}</select></td>
     <td style="white-space:nowrap">${o.invoice ? `<span class="note">${esc(o.invoice.courierName)}<br>${esc(o.invoice.number)}</span>${o.channel !== "쿠팡" && o.channel !== "네이버" ? `<br><button class="btn small" data-msg="${esc(o.id)}">안내문 복사</button>` : ""}` : (o.status === "발주완료" || o.status === "접수") ? `<button class="btn small" data-inv="${esc(o.id)}">송장</button>` : ""}
+      ${lkCan(o) ? `<br><button class="btn small accent" data-lkorder="${esc(o.id)}" style="margin:4px 0">행운프레시 발주</button>` : ""}
+      ${o.lucky ? `<div class="note" style="white-space:normal;max-width:190px">행운프레시 ${esc(o.lucky.status || "")} · <b style="color:${o.lucky.paymentStatus === "결제 대기" ? "#b91c1c" : "#15803d"}">${esc(o.lucky.paymentStatus || "")}</b>${o.lucky.total ? ` · ${won(o.lucky.total)}원` : ""}${o.lucky.paymentStatus === "결제 대기" ? "<br>예치금을 충전하면 자동 결제됩니다" : ""}${o.lucky.trackingNote ? `<br><span style="color:#b91c1c">${esc(o.lucky.trackingNote)}</span>` : ""}</div>` : ""}
       <button class="btn small" data-del="${esc(o.id)}">삭제</button></td></tr>
     <tr class="hidden" id="inv-${esc(o.id)}"><td colspan="9"><div class="row">
       <select class="inv-c" style="width:auto">${Object.entries(CP.couriers && Object.keys(CP.couriers).length ? CP.couriers : { CJGLS: "CJ대한통운", HYUNDAI: "롯데택배", HANJIN: "한진택배", EPOST: "우체국", KGB: "로젠택배" }).map(([k, n]) => `<option value="${k}">${esc(n)}</option>`).join("")}</select>
       <input class="inv-n" placeholder="송장번호 (숫자만)" style="width:200px">
       <button class="btn small dark" data-invsave="${esc(o.id)}">${o.channel === "쿠팡" ? "쿠팡에 송장 등록" : "송장 저장"}</button></div></td></tr>`).join("")
   $("#orderEmpty").textContent = list.length ? "" : "주문이 없습니다."
+  const lkWait = ORDERS.filter(lkCan)
+  $("#lkBulk")?.remove()
+  if (lkWait.length) $("#poBox").insertAdjacentHTML("beforebegin", `<div id="lkBulk" class="row" style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#f7fbf7"><b>🏬 행운프레시 발주 대기 ${lkWait.length}건</b><span class="note">매일 09:30 마감</span><span class="spacer"></span><button class="btn dark" id="lkBulkBtn">한 번에 발주하기</button></div>`)
+  if ($("#lkBulkBtn")) $("#lkBulkBtn").onclick = () => lkOrder(lkWait)
+  $$("[data-lkorder]").forEach(b => b.onclick = () => lkOrder(ORDERS.filter(o => o.id === b.dataset.lkorder)))
   $$(".ochk").forEach(c => c.onchange = renderPoBox)
   $$(".omap").forEach(sel => sel.onchange = async () => {
     if (!sel.value) return
