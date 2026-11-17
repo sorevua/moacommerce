@@ -201,6 +201,7 @@ nav button .ic{font-size:18px}
           <h2>B2B 도매 — 행운프레시</h2>
           <p class="note">행운프레시 공급가를 그대로 불러옵니다. 팔 옵션을 체크하고 [선택한 옵션 담기]를 누르면 [업체] → 행운프레시에 상품으로 들어가고, 거기서 쿠팡·네이버에 등록합니다. 발주 마감은 매일 09:30, 예치금(선입금) 방식입니다.</p>
           <div id="lkStatus" class="note" style="margin-top:8px">불러오는 중…</div>
+          <div id="lkWatch" class="note" style="margin-top:6px"></div>
           <div class="row" style="margin-top:12px">
             <input id="lkq" placeholder="상품명으로 찾기 (예: 사과, 키위, 감귤)" style="flex:1;min-width:200px">
             <select id="lkf"><option value="">전체</option><option value="picked">담은 것만</option></select>
@@ -499,6 +500,11 @@ const lkSel = new Set(), lkOpen = new Set()
 async function loadLucky() {
   try { LK = { ...(await api("lucky")), loaded: true } } catch (e) { LK = { loaded: true, products: [], picked: [], error: e.message } }
   renderLucky()
+  try {
+    const w = await api("lucky/watch"), l = w.last
+    $("#lkWatch").innerHTML = `🛑 <b>자동 판매중지 켜짐</b> — 하루 2번(05:50·13:50) 행운프레시에서 품절되거나 시즌이 끝나 사라진 옵션은 쿠팡에서 자동으로 판매중지하고, 다시 들어오면 자동으로 살립니다.${l ? ` 마지막 점검 ${new Date(l.at).toLocaleString("ko-KR")} · 중지 ${l.stopped} · 재개 ${l.resumed} · 가격 인상 ${l.raised}${l.errors ? ` · <span style="color:#b91c1c">오류 ${l.errors}</span>` : ""}` : " 아직 점검 기록이 없습니다."}`
+      + (w.log || []).slice(0, 3).map(r => `<details style="margin-top:4px"><summary style="cursor:pointer">${esc(new Date(r.at).toLocaleString("ko-KR"))} 변경 내역</summary>${[...r.stopped.map(x => "중지: " + x), ...r.resumed.map(x => "재개: " + x), ...r.raised.map(x => "인상: " + x), ...r.errors.map(x => "오류: " + x)].map(esc).join("<br>")}</details>`).join("")
+  } catch {}
 }
 function lkVisible() {
   const q = $("#lkq").value.trim().toLowerCase(), picked = new Set(LK.picked || []), f = $("#lkf").value

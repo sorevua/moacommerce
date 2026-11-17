@@ -481,6 +481,7 @@ export default async (req: Request, context: Context) => {
         return json({ ...sum, order: o })
       }
       if (id === "sync" && method === "POST") return json(await syncLuckyOrders())
+      if (id === "watch" && method === "GET") return json({ last: await settingsStore().get("lucky-watch-last", { type: "json" }), log: (await settingsStore().get("lucky-watch", { type: "json" })) || [] })
       if (id === "import" && method === "POST") {
         const body = await req.json()
         const want = new Set<string>((body.optionIds || []).map(String)), drop = new Set<string>((body.removeIds || []).map(String))
