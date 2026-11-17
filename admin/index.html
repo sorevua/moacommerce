@@ -195,7 +195,22 @@ nav button .ic{font-size:18px}
 
     <!-- 쿠팡 상품 -->
     <section id="tab-coupang" class="hidden">
-      <div class="subnav"><button class="on" data-pp="coupang">쿠팡</button><button data-pp="naver">네이버</button></div>
+      <div class="subnav"><button class="on" data-pp="coupang">쿠팡</button><button data-pp="naver">네이버</button><button data-pp="lucky">B2B 도매 (행운프레시)</button></div>
+      <div id="pp-lucky" class="hidden">
+        <div class="card">
+          <h2>B2B 도매 — 행운프레시</h2>
+          <p class="note">행운프레시 공급가를 그대로 불러옵니다. 팔 옵션을 체크하고 [선택한 옵션 담기]를 누르면 [업체] → 행운프레시에 상품으로 들어가고, 거기서 쿠팡·네이버에 등록합니다. 발주 마감은 매일 09:30, 예치금(선입금) 방식입니다.</p>
+          <div id="lkStatus" class="note" style="margin-top:8px">불러오는 중…</div>
+          <div class="row" style="margin-top:12px">
+            <input id="lkq" placeholder="상품명으로 찾기 (예: 사과, 키위, 감귤)" style="flex:1;min-width:200px">
+            <select id="lkf"><option value="">전체</option><option value="picked">담은 것만</option></select>
+            <button class="btn small" id="lkOpenAll">모두 펼치기</button><button class="btn small" id="lkCloseAll">모두 접기</button>
+            <button class="btn" id="lkRefresh">공급가 새로 받기</button>
+          </div>
+          <div class="row" style="margin-top:10px"><button class="btn dark" id="lkImport">선택한 옵션 담기</button><button class="btn small" id="lkRemove">선택한 옵션 빼기</button><span class="note" id="lkInfo"></span></div>
+        </div>
+        <div id="lkList"></div>
+      </div>
       <div id="pp-naver" class="hidden">
         <div class="card">
           <h2>네이버 스마트스토어</h2>
@@ -218,6 +233,7 @@ nav button .ic{font-size:18px}
           <button class="btn small" id="cpSelAll">보이는 옵션 전체 선택</button>
           <button class="btn small" id="cpStopSel">선택 판매중지 (시즌 종료)</button>
           <button class="btn small" id="cpResumeSel">선택 판매재개</button>
+          <button class="btn small" id="cpOpenAll">모두 펼치기</button><button class="btn small" id="cpCloseAll">모두 접기</button>
           <span class="note" id="cpInfo"></span>
         </div>
       </div>
@@ -424,7 +440,7 @@ function renderCp() {
   try { renderHome() } catch {}
   const list = cpVisible()
   $("#cpInfo").textContent = CPP.running ? "불러오는 중…" : CPP.error ? "오류: " + CPP.error : CPP.at ? `마지막 갱신 ${new Date(CPP.at).toLocaleString("ko-KR")} · ${list.length}/${(CPP.products || []).length}개 · 선택 ${cpSel.size}` : "아직 불러오지 않았습니다. [쿠팡에서 새로고침]을 누르세요."
-  $("#cpList").innerHTML = list.map(p => {
+  const cardOf = p => {
     const name = p.displayProductName || p.sellerProductName
     const items = (p.items || []).map(i => {
       const s = supplyFor(i.vendorItemId)
@@ -444,16 +460,89 @@ function renderCp() {
       </tr>`
     }).join("")
     const tags = p.searchTags || []
-    return `<div class="card" data-spid="${esc(p.sellerProductId)}">
-      <div class="row" style="justify-content:space-between"><div><strong>${esc(name)}</strong> <span class="note">#${esc(p.sellerProductId)} · ${esc(p.status || "")}</span></div>
+    const its = p.items || [], onN = its.filter(i => i.onSale).length, open = cpOpen.has(String(p.sellerProductId))
+    const prs = its.map(i => Number(i.salePrice)).filter(Boolean)
+    return `<div class="card" data-spid="${esc(p.sellerProductId)}" style="padding:14px 16px">
+      <div class="row cptoggle" data-spid="${esc(p.sellerProductId)}" style="justify-content:space-between;cursor:pointer;flex-wrap:nowrap">
+        <div><strong>${open ? "▾" : "▸"} ${esc(name)}</strong> <span class="note">${esc(p.status || "")}</span>
+          <div class="note">옵션 ${its.length}개 · 판매중 ${onN} · 중지 ${its.length - onN}${prs.length ? ` · ${won(Math.min(...prs))}~${won(Math.max(...prs))}원` : ""}</div></div>
+        <span class="note" style="white-space:nowrap">${open ? "접기" : "펼치기"}</span></div>
+      <div class="cpbody ${open ? "" : "hidden"}" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between"><div><span class="note">#${esc(p.sellerProductId)}</span></div>
         <div class="row"><button class="btn small cpstopall" data-spid="${esc(p.sellerProductId)}" style="border-color:#b91c1c;color:#b91c1c">이 상품 전체 판매중지</button><button class="btn small cpresall" data-spid="${esc(p.sellerProductId)}">전체 재개</button><button class="btn small accent cpauto" data-spid="${esc(p.sellerProductId)}">✨ AI 상세 자동 제작</button><button class="btn small cpedit" data-spid="${esc(p.sellerProductId)}">직접 수정</button></div></div>
       ${p.error ? `<div class="warn">${esc(p.error)}</div>` : ""}
       <div class="note" style="margin:6px 0">검색어 ${tags.length}/20 ${tags.length < 10 ? "· 검색어가 적습니다" : ""} · 배송: ${esc(p.delivery?.chargeType || "-")} ${p.delivery?.charge ? won(p.delivery.charge) + "원" : ""} (변경 안 함)</div>
       <div style="overflow-x:auto"><table><thead><tr><th></th><th>옵션</th><th>상태</th><th>판매가</th><th></th></tr></thead><tbody>${items}</tbody></table></div>
       <div class="cpeditbox"></div>
+      </div>
     </div>`
-  }).join("") || ""
+  }
+  // 농가 직송 / B2B 도매 / 업체 미연결로 나눠서 접었다 펼 수 있게
+  const groups = [["farm", "🌱 농가 직송", []], ["b2b", "🏬 B2B 도매", []], ["none", "❔ 업체 미연결", []]]
+  for (const p of list) { const v = vendorForProduct(p); groups[!v ? 2 : isB2B(v) ? 1 : 0][2].push(p) }
+  $("#cpList").innerHTML = groups.filter(g => g[2].length).map(([k, title, ps]) => `<div class="cpgroup" style="margin-bottom:18px">
+    <div class="cpgtoggle row" data-g="${k}" style="justify-content:space-between;cursor:pointer;padding:12px 16px;background:var(--ink);color:#fff;border-radius:12px;margin-bottom:10px">
+      <strong>${cpGroupClosed.has(k) ? "▸" : "▾"} ${title} <span style="font-weight:400;opacity:.8">${ps.length}개</span></strong><span style="opacity:.8">${cpGroupClosed.has(k) ? "펼치기" : "접기"}</span></div>
+    <div class="${cpGroupClosed.has(k) ? "hidden" : ""}">${ps.map(cardOf).join("")}</div></div>`).join("") || ""
 }
+const cpOpen = new Set(), cpGroupClosed = new Set()
+document.addEventListener("click", e => {
+  const g = e.target.closest(".cpgtoggle"); if (g) { cpGroupClosed.has(g.dataset.g) ? cpGroupClosed.delete(g.dataset.g) : cpGroupClosed.add(g.dataset.g); return renderCp() }
+  const t = e.target.closest(".cptoggle"); if (t) { const id = String(t.dataset.spid); cpOpen.has(id) ? cpOpen.delete(id) : cpOpen.add(id); return renderCp() }
+  if (e.target.id === "cpOpenAll") { cpVisible().forEach(p => cpOpen.add(String(p.sellerProductId))); cpGroupClosed.clear(); return renderCp() }
+  if (e.target.id === "cpCloseAll") { cpOpen.clear(); return renderCp() }
+})
+
+// ---------- B2B 도매: 행운프레시 ----------
+let LK = { loaded: false, products: [], picked: [] }
+const lkSel = new Set(), lkOpen = new Set()
+async function loadLucky() {
+  try { LK = { ...(await api("lucky")), loaded: true } } catch (e) { LK = { loaded: true, products: [], picked: [], error: e.message } }
+  renderLucky()
+}
+function lkVisible() {
+  const q = $("#lkq").value.trim().toLowerCase(), picked = new Set(LK.picked || []), f = $("#lkf").value
+  return (LK.products || []).filter(p => (!q || String(p.name).toLowerCase().includes(q)) && (f !== "picked" || (p.options || []).some(o => picked.has(o.id))))
+}
+function renderLucky() {
+  const picked = new Set(LK.picked || [])
+  $("#lkStatus").innerHTML = LK.configured === false ? "행운프레시 키가 아직 연결되지 않았습니다." : LK.error ? `<span style="color:#b91c1c">오류: ${esc(LK.error)}</span>`
+    : `상품 ${(LK.products || []).length}개 · 담은 옵션 ${picked.size}개 · 예치금 잔액 <b>${LK.wallet ? won(LK.wallet.balance) + "원" : "확인 실패"}</b>${LK.wallet?.shortage ? ` · <span style="color:#b91c1c">부족 ${won(LK.wallet.shortage)}원</span>` : ""}${LK.at ? ` · 공급가 기준 ${new Date(LK.at).toLocaleString("ko-KR")}` : ""}`
+  $("#lkInfo").textContent = `선택 ${lkSel.size}개`
+  $("#lkList").innerHTML = lkVisible().map(p => {
+    const os = p.options || [], open = lkOpen.has(p.id), pr = os.map(o => o.price), nPick = os.filter(o => picked.has(o.id)).length
+    const rows = !open ? "" : os.map(o => {
+      const supply = Number(o.price) + Number(o.shippingFee || 0), out = o.status !== "판매중"
+      return `<tr style="${out ? "opacity:.5" : ""}"><td><input type="checkbox" class="lkchk" data-id="${esc(o.id)}" ${lkSel.has(o.id) ? "checked" : ""} style="width:auto"></td>
+        <td>${esc(o.name)} <span class="note">${esc(o.prefixName || "")}</span>${picked.has(o.id) ? ' <span style="color:#15803d;font-weight:700">담김</span>' : ""}${out ? ' <span style="color:#b91c1c;font-weight:700">일시품절</span>' : ""}</td>
+        <td class="num">${won(supply)}</td><td class="num"><b>${won(salePrice(supply, "쿠팡"))}</b></td><td class="num"><b>${won(salePrice(supply, "네이버"))}</b></td></tr>`
+    }).join("")
+    return `<div class="card" style="padding:14px 16px">
+      <div class="row lktoggle" data-id="${esc(p.id)}" style="justify-content:space-between;cursor:pointer;flex-wrap:nowrap">
+        <div><strong>${open ? "▾" : "▸"} ${esc(String(p.name).trim())}</strong>${nPick ? ` <span style="color:#15803d;font-weight:700">담김 ${nPick}</span>` : ""}
+          <div class="note">옵션 ${os.length}개 · 공급가 ${won(Math.min(...pr))}~${won(Math.max(...pr))}원 · 마감 ${esc(p.orderCutoffTime || "")}</div></div>
+        <span class="note" style="white-space:nowrap">${open ? "접기" : "펼치기"}</span></div>
+      ${open ? `<div style="margin-top:10px"><div class="row"><button class="btn small lkall" data-id="${esc(p.id)}">이 상품 옵션 전체 선택</button>${p.photoDriveLink ? `<a class="btn small" href="${esc(p.photoDriveLink)}" target="_blank" rel="noopener" style="text-decoration:none">사진 폴더 열기</a>` : ""}</div>
+        <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th></th><th>옵션</th><th class="num">공급가</th><th class="num">쿠팡 추천가</th><th class="num">네이버 추천가</th></tr></thead><tbody>${rows}</tbody></table></div></div>` : ""}
+    </div>`
+  }).join("") || `<p class="note">${LK.loaded ? "보여 줄 상품이 없습니다." : ""}</p>`
+}
+$("#lkq").oninput = debounce(renderLucky, 250); $("#lkf").onchange = renderLucky
+$("#lkOpenAll").onclick = () => { lkVisible().forEach(p => lkOpen.add(p.id)); renderLucky() }
+$("#lkCloseAll").onclick = () => { lkOpen.clear(); renderLucky() }
+$("#lkRefresh").onclick = async () => { try { toast("행운프레시에서 받는 중…"); await api("lucky/refresh", { method: "POST" }); await loadLucky(); await loadAll(); toast("공급가를 새로 받았습니다.") } catch (e) { toast(e.message) } }
+$("#lkList").addEventListener("click", e => {
+  const a = e.target.closest(".lkall"); if (a) { const p = (LK.products || []).find(x => x.id === a.dataset.id); (p?.options || []).forEach(o => lkSel.add(o.id)); return renderLucky() }
+  if (e.target.closest("a,input,button,table")) return
+  const t = e.target.closest(".lktoggle"); if (t) { lkOpen.has(t.dataset.id) ? lkOpen.delete(t.dataset.id) : lkOpen.add(t.dataset.id); renderLucky() }
+})
+$("#lkList").addEventListener("change", e => { if (e.target.classList.contains("lkchk")) { e.target.checked ? lkSel.add(e.target.dataset.id) : lkSel.delete(e.target.dataset.id); $("#lkInfo").textContent = `선택 ${lkSel.size}개` } })
+async function lkSend(body, msg) {
+  if (!lkSel.size) return toast("먼저 옵션을 체크하세요.")
+  try { const r = await api("lucky/import", { method: "POST", body: JSON.stringify(body) }); lkSel.clear(); await loadLucky(); await loadAll(); toast(msg(r)) } catch (e) { toast(e.message) }
+}
+$("#lkImport").onclick = () => lkSend({ optionIds: [...lkSel] }, r => `${r.added}개를 담았습니다. [업체] → 행운프레시에서 쿠팡·네이버 등록을 진행하세요.`)
+$("#lkRemove").onclick = () => { if (confirm("선택한 옵션을 업체 상품에서 뺄까요? (쿠팡·네이버에 이미 올린 상품은 그대로 남습니다)")) lkSend({ removeIds: [...lkSel] }, r => `뺐습니다. 남은 옵션 ${r.count}개`) }
 async function cpItem(vid, body) { await api("coupang/items/" + vid, { method: "PUT", body: JSON.stringify(body) }) }
 function squareJpeg(file, size = 1000) {
   return new Promise((resolve, reject) => {
@@ -1309,7 +1398,8 @@ function goTab(name) { const b = $(`nav button[data-tab="${name}"]`); if (b) b.c
 document.addEventListener("click", e => { const g = e.target.closest("[data-go]"); if (g) goTab(g.dataset.go) })
 $$(".subnav button").forEach(b => b.onclick = () => {
   $$(".subnav button").forEach(x => x.classList.toggle("on", x === b))
-  $("#pp-coupang").classList.toggle("hidden", b.dataset.pp !== "coupang"); $("#pp-naver").classList.toggle("hidden", b.dataset.pp !== "naver")
+  for (const k of ["coupang", "naver", "lucky"]) $("#pp-" + k).classList.toggle("hidden", b.dataset.pp !== k)
+  if (b.dataset.pp === "lucky" && !LK.loaded) loadLucky()
 })
 
 if (location.hash.length > 1) setTimeout(() => goTab(location.hash.slice(1)), 0)
@@ -1831,7 +1921,7 @@ function renderVendors() {
 
     <h3>상품·공급가</h3>
     <table><thead><tr><th>상품명(규격 포함)</th><th class="num">공급가(원)</th><th>쿠팡 옵션ID</th><th>네이버 옵션코드</th><th></th></tr></thead><tbody id="prodRows">
-      ${(v.products || []).map(p => `<tr><td><input class="p_name" value="${esc(p.name)}"></td><td><input class="p_price" type="number" min="0" value="${p.supplyPrice || 0}" style="text-align:right"></td><td><input class="p_cp" value="${esc(p.coupangItemId || "")}" placeholder="WING 옵션ID"></td><td><input class="p_nv" value="${esc(p.naverItemId || "")}" placeholder="네이버 옵션코드"></td><td><button class="btn small p_del">삭제</button></td></tr>`).join("")}
+      ${(v.products || []).map(p => `<tr data-lk="${esc(p.luckyOptionId || "")}"><td><input class="p_name" value="${esc(p.name)}"></td><td><input class="p_price" type="number" min="0" value="${p.supplyPrice || 0}" style="text-align:right"></td><td><input class="p_cp" value="${esc(p.coupangItemId || "")}" placeholder="WING 옵션ID"></td><td><input class="p_nv" value="${esc(p.naverItemId || "")}" placeholder="네이버 옵션코드"></td><td><button class="btn small p_del">삭제</button></td></tr>`).join("")}
     </tbody></table>
     <button class="btn small" id="addProd" style="margin-top:8px">+ 상품 추가</button>
 
@@ -1924,7 +2014,7 @@ function renderListing(l) {
 
 async function saveVendor(isNew, quiet) {
   const prev = isNew ? {} : VENDORS.find(x => x.id === currentVendorId)
-  const products = $$("#prodRows tr").map(tr => ({ name: $(".p_name", tr).value.trim(), supplyPrice: Number($(".p_price", tr).value || 0), coupangItemId: ($(".p_cp", tr)?.value || "").trim(), naverItemId: ($(".p_nv", tr)?.value || "").trim() })).filter(p => p.name)
+  const products = $$("#prodRows tr").map(tr => ({ name: $(".p_name", tr).value.trim(), supplyPrice: Number($(".p_price", tr).value || 0), coupangItemId: ($(".p_cp", tr)?.value || "").trim(), naverItemId: ($(".p_nv", tr)?.value || "").trim(), ...(tr.dataset.lk ? Object.fromEntries(Object.entries((prev.products || []).find(x => x.luckyOptionId === tr.dataset.lk) || {}).filter(([k]) => k.startsWith("lucky"))) : {}) })).filter(p => p.name)
   const body = {
     name: $("#v_name").value.trim(), status: $("#v_status").value, products,
     kind: $("#v_kind").value, brandName: $("#v_brand").value.trim(), brandText: $("#v_brandtext").value.trim(),

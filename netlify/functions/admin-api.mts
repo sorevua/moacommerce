@@ -3,6 +3,7 @@ import { getStore } from "@netlify/blobs"
 import { randomUUID } from "node:crypto"
 import { isLoggedIn } from "./_lib/auth.mts"
 import { priceConfig } from "./_lib/pricing.mts"
+import { luckyConfigured, luckyWallet, luckyProducts } from "./_lib/luckyfresh.mts"
 import { listInquiries, answerInquiry, skipInquiry } from "./_lib/inquiries.mts"
 import { naverConfigured, naverConfirm, naverDispatch, syncNaverOrders } from "./_lib/naver.mts"
 import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS, changePrice, stopSale, resumeSale, updateProductContent, cleanTags, returnCenters, outboundPlaces, predictCategory, productHistory } from "./_lib/coupang.mts"
@@ -421,6 +422,62 @@ export default async (req: Request, context: Context) => {
     }
 
     // 가격 엔진
+    // 행운프레시 (B2B 도매) — 조회·업체에 담기. 주문·충전은 여기서 하지 않음
+    if (res === "lucky") {
+      if (!luckyConfigured()) return json({ configured: false })
+      const findVendor = async () => {
+        const { blobs } = await vendors().list()
+        const list: any[] = (await Promise.all(blobs.map((b) => vendors().get(b.key, { type: "json" })))).filter(Boolean)
+        return list.find((v) => v.lucky) || null
+      }
+      // 받아 온 공급가·품절을 업체 상품에 반영
+      const applyPrices = async (plist: any[]) => {
+        const v = await findVendor(); if (!v) return null
+        const by = new Map<string, any>(); for (const p of plist) for (const o of p.options || []) by.set(o.id, o)
+        let changed = false
+        for (const x of v.products || []) {
+          if (!x.luckyOptionId) continue
+          const o = by.get(x.luckyOptionId)
+          const soldOut = !o || o.status !== "판매중", supply = o ? Number(o.price) + Number(o.shippingFee || 0) : x.supplyPrice
+          if (x.supplyPrice !== supply || !!x.luckySoldOut !== soldOut) { x.supplyPrice = supply; x.luckySoldOut = soldOut; changed = true }
+        }
+        if (changed) { v.updatedAt = now(); await vendors().setJSON(v.id, v) }
+        return v
+      }
+      if (!id && method === "GET") {
+        const out: any = { configured: true }
+        try { out.wallet = await luckyWallet() } catch (e: any) { out.walletError = e.message }
+        try { const p: any = await luckyProducts(false); out.at = p.at; out.products = p.data?.products || []; out.fresh = !!p.fresh; if (p.fresh) await applyPrices(out.products) } catch (e: any) { out.error = e.message; out.products = [] }
+        const v = await findVendor(); out.vendorId = v?.id || null
+        out.picked = (v?.products || []).filter((x: any) => x.luckyOptionId).map((x: any) => x.luckyOptionId)
+        return json(out)
+      }
+      if (id === "refresh" && method === "POST") {
+        const p: any = await luckyProducts(true); await applyPrices(p.data?.products || [])
+        return json({ ok: true, at: p.at })
+      }
+      if (id === "import" && method === "POST") {
+        const body = await req.json()
+        const want = new Set<string>((body.optionIds || []).map(String)), drop = new Set<string>((body.removeIds || []).map(String))
+        const p: any = await luckyProducts(false), plist: any[] = p.data?.products || []
+        let v = await findVendor()
+        if (!v) {
+          v = { ...seedVendor(), id: randomUUID(), name: "행운프레시", status: "거래 중", kind: "B2B", lucky: true, products: [], sender: {}, photoIds: [], listing: null, createdAt: now(), updatedAt: now() }
+          v.order = { ...v.order, method: "API", email: "", cutoff: "09:30", prepay: true, fixedMessage: "" }
+        }
+        v.products = (v.products || []).filter((x: any) => !(x.luckyOptionId && drop.has(x.luckyOptionId)))
+        const have = new Set((v.products || []).map((x: any) => x.luckyOptionId).filter(Boolean))
+        let added = 0
+        for (const pr of plist) for (const o of pr.options || []) {
+          if (!want.has(o.id) || have.has(o.id)) continue
+          v.products.push({ name: `${String(pr.name).trim()} ${String(o.name).trim()}`, supplyPrice: Number(o.price) + Number(o.shippingFee || 0), coupangItemId: "", naverItemId: "", luckyProductId: pr.id, luckyOptionId: o.id, luckyProductName: String(pr.name).trim(), luckyPhotos: pr.photoDriveLink || "", luckySoldOut: o.status !== "판매중" })
+          added++
+        }
+        v.updatedAt = now(); await vendors().setJSON(v.id, v)
+        return json({ ok: true, added, vendorId: v.id, count: v.products.filter((x: any) => x.luckyOptionId).length })
+      }
+    }
+
     if (res === "pricing") {
       if (!id && method === "GET") return json({ cfg: await priceConfig(), report: (await settingsStore().get("price-report", { type: "json" })) || null, log: (await settingsStore().get("price-log", { type: "json" })) || [] })
       if (id === "config" && method === "PUT") {

@@ -55,5 +55,5 @@ export async function luckyProducts(force = false) {
   const data = await lcall("GET", "/products")
   const out = { at: Date.now(), data }
   await store().setJSON("lucky-products", out)
-  return out
+  return { ...out, fresh: true }
 }
