@@ -1,6 +1,6 @@
 // 임시 확인용 (확인 후 삭제)
 import { getStore } from "@netlify/blobs"
-import { outboundPlaces, returnCenters } from "./_lib/coupang.mts"
+import { outboundPlaces, returnCenters, getProduct, productHistory } from "./_lib/coupang.mts"
 import { internalKey } from "./_lib/auth.mts"
 export default async (req: Request) => {
   const u = new URL(req.url), t = Netlify.env.get("ONETIME_TOKEN") || ""
@@ -20,6 +20,11 @@ export default async (req: Request) => {
     const body = { productIds: ids, templateId: "16419735114", outboundShippingPlaceCode: "25572192", returnCenterCode: "1002729419", deliveryCompanyCode: "CJGLS", requestApproval: u.searchParams.get("approve") === "1", once: u.searchParams.get("once") === "1", retry: u.searchParams.get("retry") === "1", batch: Number(u.searchParams.get("batch") || 8) }
     const r = await fetch(u.origin + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify(body) })
     out.started = r.status; out.body = body
+  }
+  if (act === "check") {
+    const id = u.searchParams.get("id") || ""
+    try { const p: any = await getProduct(id); out.product = { status: p.statusName, name: p.sellerProductName, brand: p.brand, outbound: p.outboundShippingPlaceCode, ret: p.returnCenterCode, courier: p.deliveryCompanyCode, charge: [p.deliveryChargeType, p.deliveryCharge, p.remoteAreaDeliverable, p.returnCharge, p.deliveryChargeOnReturn], items: (p.items || []).length, item0: { name: p.items?.[0]?.itemName, price: p.items?.[0]?.salePrice, vid: p.items?.[0]?.vendorItemId, ship: p.items?.[0]?.outboundShippingTimeDay, img: p.items?.[0]?.images?.[0], content: JSON.stringify(p.items?.[0]?.contents || []).slice(0, 300) } } } catch (e: any) { out.productError = e.message }
+    try { out.history = JSON.stringify(await productHistory(id)).slice(0, 1200) } catch (e: any) { out.historyError = e.message }
   }
   if (act === "status") {
     const st: any = await getStore({ name: "admin-settings", consistency: "strong" }).get("lucky-reg", { type: "json" })
