@@ -800,7 +800,7 @@ export async function createNew(job: any) {
     // B2B 업체 상품은 모아커머스 대신 업체에 정한 브랜드(없으면 '기타')
     if (job.vendorId) {
       const vv: any = await getStore({ name: "admin-vendors", consistency: "strong" }).get(String(job.vendorId), { type: "json" }).catch(() => null)
-      if (vv?.kind === "B2B") job.brand = vv.brandName || "기타"
+      if (vv?.kind === "B2B") { job.brand = vv.brandName || "GENERIC"; body.manufacture = vv.brandName || "상세페이지 참조" } // 쿠팡: 브랜드가 없는 상품은 GENERIC
     }
     body.brand = String(job.brand || "모아커머스")
     if (!body.manufacture) body.manufacture = body.brand
@@ -822,13 +822,10 @@ export async function createNew(job: any) {
     log.push("쿠팡에 임시저장 요청 중…"); await save({ running: true })
     let r = await createProduct(body)
     // 등록 안 된 브랜드명은 쿠팡이 거절한다 → 브랜드 없음으로 다시, 그래도 안 되면 틀 상품의 브랜드로
-    if (/브랜드 ID/.test(JSON.stringify(r || ""))) {
-      for (const b of ["", String(tpl.brand || "")]) {
-        log.push(`브랜드 "${body.brand}" 거절 → "${b || "브랜드 없음"}"(으)로 다시 시도`)
-        body.brand = b; if (!b) delete body.brandId
-        r = await createProduct(body)
-        if (!/브랜드 ID/.test(JSON.stringify(r || ""))) break
-      }
+    if (/브랜드 ID|brandId/.test(JSON.stringify(r || "")) && body.brand !== "GENERIC") {
+      log.push(`브랜드 "${body.brand}" 거절 → 브랜드 없음(GENERIC)으로 다시 시도`)
+      body.brand = "GENERIC"; delete body.brandId
+      r = await createProduct(body)
     }
     const id = String(r?.data ?? "")
     if (!/^\d+$/.test(id)) throw new Error("쿠팡 등록 실패: " + JSON.stringify(r).slice(0, 400))
