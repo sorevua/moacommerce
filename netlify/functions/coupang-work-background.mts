@@ -732,6 +732,7 @@ export async function createNew(job: any) {
       it.originalPrice = Math.round(Number(o.price) / 10) * 10
       it.salePrice = it.originalPrice
       it.maximumBuyCount = Number(base.maximumBuyCount) || 999
+      if (Number(job.shipDays) > 0) it.outboundShippingTimeDay = Number(job.shipDays)
       it.attributes = (am.attributes || []).filter((a: any) => a?.attributeTypeName && a?.attributeValueName).map((a: any) => ({ attributeTypeName: String(a.attributeTypeName), attributeValueName: String(a.attributeValueName) }))
       // 카테고리에 없는 속성·추측한 개당 중량은 버린다
       const metaBy = new Map((meta?.attributes || []).map((a: any) => [a.attributeTypeName, a]))

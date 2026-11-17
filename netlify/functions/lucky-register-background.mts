@@ -2,7 +2,7 @@
 import { getStore } from "@netlify/blobs"
 import { isLoggedIn, isInternal, internalKey } from "./_lib/auth.mts"
 import { luckyProducts } from "./_lib/luckyfresh.mts"
-import { getProduct } from "./_lib/coupang.mts"
+import { getProduct, call } from "./_lib/coupang.mts"
 import { createNew } from "./coupang-work-background.mts"
 
 const settings = () => getStore({ name: "admin-settings", consistency: "strong" })
@@ -68,6 +68,38 @@ export default async (req: Request) => {
     const vlist: any[] = (await Promise.all(blobs.map((b) => vendors().get(b.key, { type: "json" })))).filter(Boolean)
     let v = vlist.find((x) => x.lucky)
     if (!v) { v = { id: crypto.randomUUID(), name: "행운프레시", status: "거래 중", kind: "B2B", lucky: true, products: [], sender: {}, order: { method: "API", cutoff: "09:30", prepay: true }, photoIds: [], listing: null, createdAt: new Date().toISOString() } }
+    // 연결 단계: 승인된 상품의 쿠팡 옵션ID를 업체 상품에 넣는다 (주문 자동 연결). 출고 소요일이 다르면 고쳐서 다시 요청
+    if (job.mode === "link") {
+      let n = 0
+      for (const [pid, d] of Object.entries(st.done) as any) {
+        if (!d.ok || d.linked || Date.now() - started > 11 * 60e3) continue
+        try {
+          const cp: any = await getProduct(String(d.sellerProductId))
+          d.cpStatus = cp.statusName
+          const items: any[] = cp.items || []
+          let filled = 0
+          for (const o of d.options || []) {
+            const it = items.find((x) => x.itemName === o.name)
+            const vp = v.products.find((x: any) => x.luckyOptionId === o.id)
+            if (it?.vendorItemId && vp) { vp.coupangItemId = String(it.vendorItemId); filled++ }
+          }
+          if (filled) { v.updatedAt = new Date().toISOString(); await vendors().setJSON(v.id, v) }
+          const days = Number(job.shipDays || 0)
+          if (days && items.some((x) => Number(x.outboundShippingTimeDay) !== days)) {
+            for (const x of items) x.outboundShippingTimeDay = days
+            cp.requested = true
+            const r: any = await call("PUT", "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products", "", cp)
+            d.shipFix = String(r?.code || r?.message || "").slice(0, 80)
+          }
+          d.linkedCount = filled; d.linked = filled === (d.options || []).length; n++
+        } catch (e: any) { d.linkError = String(e?.message || e).slice(0, 200) }
+        await save()
+      }
+      const left = (Object.values(st.done) as any[]).filter((d) => d.ok && !d.linked && !d.linkError).length
+      st.running = false; st.linkLeft = left; await save()
+      if (left > 0 && n > 0 && !job.once) await fetch(origin + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify({ ...job, token: undefined }) })
+      return
+    }
     const want: string[] = (job.productIds?.length ? job.productIds : plist.map((p) => p.id)).filter((id: string) => { const p = plist.find((x) => x.id === id); return p && !SKIP.test(p.name) })
     const todo = want.filter((id) => !st.done[id]?.ok && !(st.done[id]?.error && !job.retry))
     st.total = want.length; st.left = todo.length; await save()
@@ -104,7 +136,7 @@ export default async (req: Request) => {
           options: opts.map((o: any, i: number) => ({ name: optNames[i], price: priceOf(Number(o.price) + Number(o.shippingFee || 0), cfg) })),
           facts: `도매 공급 상품. 상품명: ${name}. 원산지·생산자 등 확인되지 않은 정보는 '상세페이지 참조'로 적는다. 무료배송.`,
           perPieceGram: Object.fromEntries(optNames.map((n: string) => [n, pieceGram(n)]).filter((x: any) => x[1] > 0)),
-          mainImage, contentImages, photos: [], vendorId: v.id, fullAttr: true, requestApproval: !!job.requestApproval,
+          mainImage, contentImages, photos: [], vendorId: v.id, fullAttr: true, requestApproval: !!job.requestApproval, shipDays: Number(job.shipDays || 0),
           outboundShippingPlaceCode: job.outboundShippingPlaceCode, returnCenterCode: job.returnCenterCode, deliveryCompanyCode: job.deliveryCompanyCode,
         })
         const r: any = await settings().get(`create-${jobId}`, { type: "json" })
@@ -117,6 +149,7 @@ export default async (req: Request) => {
     }
     const remain = want.filter((x) => !st.done[x]).length
     st.running = remain > 0 && !job.once; await save()
+    if (remain === 0 && !job.once) await fetch(origin + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify({ ...job, token: undefined, mode: "link" }) })
     if (remain > 0 && !job.once) await fetch(origin + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify({ ...job, token: undefined, retry: false }) })
   } catch (e: any) { st.running = false; st.error = String(e?.message || e); await save() }
 }

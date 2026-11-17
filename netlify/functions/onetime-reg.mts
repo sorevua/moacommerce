@@ -17,7 +17,7 @@ export default async (req: Request) => {
   }
   if (act === "start") {
     const ids = (u.searchParams.get("ids") || "").split(",").filter(Boolean)
-    const body = { productIds: ids, templateId: "16419735114", outboundShippingPlaceCode: "25572192", returnCenterCode: "1002729419", deliveryCompanyCode: "CJGLS", requestApproval: u.searchParams.get("approve") === "1", once: u.searchParams.get("once") === "1", retry: u.searchParams.get("retry") === "1", batch: Number(u.searchParams.get("batch") || 8) }
+    const body = { productIds: ids, templateId: "16419735114", outboundShippingPlaceCode: "25572192", returnCenterCode: "1002729419", deliveryCompanyCode: "CJGLS", requestApproval: u.searchParams.get("approve") === "1", once: u.searchParams.get("once") === "1", retry: u.searchParams.get("retry") === "1", shipDays: 3, mode: u.searchParams.get("mode") || "", batch: Number(u.searchParams.get("batch") || 8) }
     const r = await fetch(u.origin + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify(body) })
     out.started = r.status; out.body = body
   }
@@ -31,7 +31,8 @@ export default async (req: Request) => {
     out.running = st?.running; out.error = st?.error; out.total = st?.total; out.at = st?.at
     const d = Object.values(st?.done || {}) as any[]
     out.ok = d.filter((x) => x.ok).length; out.fail = d.filter((x) => !x.ok).length
-    out.list = d.map((x) => x.ok ? `OK ${x.name} #${x.sellerProductId} (${x.options?.length}옵션) ${(x.log || []).join(" / ").slice(0, 700)}` : `FAIL ${x.name}: ${x.error}`)
+    out.linkLeft = st?.linkLeft; out.linked = d.filter((x) => x.linked).length
+    out.list = d.map((x) => x.ok ? `OK ${x.name} #${x.sellerProductId} (${x.options?.length}옵션) ${x.cpStatus || ""} 연결 ${x.linkedCount ?? "-"} ${x.shipFix ? "출고일수정:" + x.shipFix : ""} ${x.linkError || ""}` : `FAIL ${x.name}: ${x.error}`)
   }
   if (act === "reset") { const s2 = getStore({ name: "admin-settings", consistency: "strong" }); const st: any = (await s2.get("lucky-reg", { type: "json" })) || { done: {} }; for (const k of Object.keys(st.done)) if (!st.done[k].ok) delete st.done[k]; st.running = false; await s2.setJSON("lucky-reg", st); out.reset = true }
   return new Response(JSON.stringify(out, null, 1), { headers: { "content-type": "application/json; charset=utf-8" } })
