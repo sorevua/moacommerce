@@ -100,6 +100,28 @@ export default async (req: Request) => {
     const vlist: any[] = (await Promise.all(blobs.map((b) => vendors().get(b.key, { type: "json" })))).filter(Boolean)
     let v = vlist.find((x) => x.lucky)
     if (!v) { v = { id: crypto.randomUUID(), name: "행운프레시", status: "거래 중", kind: "B2B", lucky: true, products: [], sender: {}, order: { method: "API", cutoff: "09:30", prepay: true }, photoIds: [], listing: null, createdAt: new Date().toISOString() } }
+    // 출고 소요일 일괄 변경: 등록된 모든 상품을 job.shipDays 일로 맞추고 다시 승인 요청
+    if (job.mode === "ship") {
+      const days = Number(job.shipDays || 0); if (!days) throw new Error("shipDays 가 없습니다")
+      for (const [pid, d] of Object.entries(st.done) as any) {
+        if (!d.ok || d.shipDays === days || Date.now() - started > 11 * 60e3) continue
+        try {
+          const cp: any = await getProduct(String(d.sellerProductId))
+          const items: any[] = cp.items || []
+          if (items.some((x) => Number(x.outboundShippingTimeDay) !== days)) {
+            for (const x of items) x.outboundShippingTimeDay = days
+            cp.requested = true
+            const r: any = await call("PUT", "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products", "", cp)
+            if (!/SUCCESS/i.test(String(r?.code || ""))) throw new Error(JSON.stringify(r).slice(0, 200))
+          }
+          d.shipDays = days; delete d.shipError
+        } catch (e: any) { d.shipError = String(e?.message || e).slice(0, 200) }
+        await save()
+      }
+      const all = (Object.values(st.done) as any[]).filter((d) => d.ok)
+      st.running = false; st.ship = { days, done: all.filter((d) => d.shipDays === days).length, total: all.length, errors: all.filter((d) => d.shipError).map((d) => `${d.name}: ${d.shipError}`) }; await save()
+      return
+    }
     // 연결 단계: 승인된 상품의 쿠팡 옵션ID를 업체 상품에 넣는다 (주문 자동 연결). 출고 소요일이 다르면 고쳐서 다시 요청
     if (job.mode === "link") {
       let n = 0

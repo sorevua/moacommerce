@@ -40,7 +40,7 @@ export default async () => {
     if (Object.values(reg?.done || {}).some((d: any) => d.ok && !d.linked)) {
       for (const d of Object.values(reg.done) as any[]) if (d.ok && !d.linked) delete d.linkError
       await getStore({ name: "admin-settings", consistency: "strong" }).setJSON("lucky-reg", reg)
-      await fetch((Netlify.env.get("URL") || "https://volqavo.com") + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify({ mode: "link", once: true, shipDays: 3 }) })
+      await fetch((Netlify.env.get("URL") || "https://volqavo.com") + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify({ mode: "link", once: true, shipDays: 2 }) })
     }
   } catch (err) { console.error("lucky link", err) }
   // 행운프레시(B2B)에 넣은 주문의 결제 상태·송장 가져오기 → 쿠팡·네이버에 송장 등록
