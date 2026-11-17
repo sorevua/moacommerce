@@ -758,6 +758,12 @@ export async function createNew(job: any) {
         const kg = nm.match(/(\d+(?:\.\d+)?)\s*kg/i)
         const per = (job.perPieceGram || {})[nm]
         if (/개당/.test(t)) { if (per) v = `${per}g` }
+        else if (/중량|무게/.test(t) && !kg && job.fullAttr) {
+          // kg 표기가 없는 옵션("500g", "750g 2팩"): 글자형은 옵션 이름 그대로, 숫자형은 g 값
+          const g = nm.match(/(\d+)\s*g(?!\w)/i)
+          if (a.dataType === "STRING") v = nm.slice(0, 30)
+          else if (g) v = a.basicUnit === "kg" ? `${Number(g[1]) / 1000}kg` : `${g[1]}g`
+        }
         else if (/중량|무게/.test(t) && kg) {
           v = a.basicUnit === "g" ? `${Number(kg[1]) * 1000}g` : `${kg[1]}kg`
           // 글자형 중량은 등급을 붙여 옵션끼리 겹치지 않게 한다 (예: 5kg 특대)
@@ -815,7 +821,9 @@ export async function createNew(job: any) {
       })
     }
     for (const it of body.items) {
-      const miss = mand.filter((a: any) => !it.attributes.some((x: any) => x.attributeTypeName === a.attributeTypeName)).map((a: any) => a.attributeTypeName)
+      // 같은 그룹(예: 개당 중량 / 개당 용량)은 하나만 있으면 된다
+      const hasAttr = (n: string) => it.attributes.some((x: any) => x.attributeTypeName === n)
+      const miss = mand.filter((a: any) => !hasAttr(a.attributeTypeName) && !(a.groupNumber && a.groupNumber !== "NONE" && mand.some((m: any) => m.groupNumber === a.groupNumber && hasAttr(m.attributeTypeName)))).map((a: any) => a.attributeTypeName)
       if (miss.length) throw new Error(`"${it.itemName}" 필수 정보가 없습니다: ${miss.join(", ")}. 업체에 확인해서 넣어 주세요.`)
     }
     log.push(`브랜드: ${body.brand} / 옵션1 속성: ${JSON.stringify(body.items[0]?.attributes || [])}`)
