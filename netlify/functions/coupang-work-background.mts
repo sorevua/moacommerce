@@ -820,7 +820,16 @@ export async function createNew(job: any) {
     log.push(`브랜드: ${body.brand} / 옵션1 속성: ${JSON.stringify(body.items[0]?.attributes || [])}`)
     { const d: any = JSON.parse(JSON.stringify(body.items[0] || {})); delete d.images; delete d.contents; delete d.notices; delete d.searchTags; log.push("구매옵션: " + body.items.map((it: any) => it.itemName + "=" + it.attributes.filter((a: any) => a.exposed === "EXPOSED").map((a: any) => a.attributeValueName).join("/")).join(" | ")) }
     log.push("쿠팡에 임시저장 요청 중…"); await save({ running: true })
-    const r = await createProduct(body)
+    let r = await createProduct(body)
+    // 등록 안 된 브랜드명은 쿠팡이 거절한다 → 브랜드 없음으로 다시, 그래도 안 되면 틀 상품의 브랜드로
+    if (/브랜드 ID/.test(JSON.stringify(r || ""))) {
+      for (const b of ["", String(tpl.brand || "")]) {
+        log.push(`브랜드 "${body.brand}" 거절 → "${b || "브랜드 없음"}"(으)로 다시 시도`)
+        body.brand = b; if (!b) delete body.brandId
+        r = await createProduct(body)
+        if (!/브랜드 ID/.test(JSON.stringify(r || ""))) break
+      }
+    }
     const id = String(r?.data ?? "")
     if (!/^\d+$/.test(id)) throw new Error("쿠팡 등록 실패: " + JSON.stringify(r).slice(0, 400))
     log.push(`${job.requestApproval ? "등록·승인요청" : "임시저장"} 완료 — 등록상품ID ${id}`)
