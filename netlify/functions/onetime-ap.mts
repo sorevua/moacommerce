@@ -20,8 +20,9 @@ export default async (req: Request) => {
       const p: any = await getProduct(id)
       const its: any[] = p.items || []
       if (u.searchParams.get("raw") === "1") { out.rows.push({ id, name: p.sellerProductName, keys: Object.keys(its[0] || {}), ap: its[0]?.autoPricingInfoView, sale: its[0]?.salePrice, orig: its[0]?.originalPrice }); continue }
-      const on = its.filter((it) => it.autoPricingInfoView && JSON.stringify(it.autoPricingInfoView) !== "{}" && (it.autoPricingInfoView.enabled ?? it.autoPricingInfoView.autoPricingEnabled ?? it.autoPricingInfoView.status ?? true))
-      out.rows.push({ id, name: p.sellerProductName, items: its.length, apItems: its.filter((it) => it.autoPricingInfoView).length, sample: its.filter((it) => it.autoPricingInfoView).slice(0, 2).map((it) => ({ n: it.itemName, sale: it.salePrice, supply: supply.get(String(it.vendorItemId)) || 0, ap: it.autoPricingInfoView })) })
+      const on = its.filter((it) => it.autoPricingInfoView?.active)
+      if (on.length) out.rows.push({ id, name: p.sellerProductName, items: its.length, active: on.length, list: on.map((it) => ({ n: it.itemName, vid: it.vendorItemId, sale: it.salePrice, orig: it.originalPrice, supply: supply.get(String(it.vendorItemId)) || 0, ap: it.autoPricingInfoView })) })
+      else out.off = (out.off || 0) + 1
     } catch (e: any) { out.rows.push({ id, error: e.message.slice(0, 120) }) }
   }
   return new Response(JSON.stringify(out, null, 1), { headers: { "content-type": "application/json; charset=utf-8" } })
