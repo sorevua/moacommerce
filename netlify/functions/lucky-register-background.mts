@@ -40,6 +40,15 @@ function priceOf(supply: number, s: any) {
   const cp = up(cost / (1 - d.coupangFee * (1 + d.vatOnFee) - d.marginRate)), np = up(cost / (1 - (d.naverSalesFee + d.naverPayFee) * (1 + d.vatOnFee) - d.marginRate))
   return Number(d.sameMarketPrice) ? Math.max(cp, np) : cp
 }
+// 옵션 이름에서 개당 중량(g)을 읽는다: "(60-69g)" → 65, "(130g 이상)" → 130, "5kg (25과 내외)" → 200. 못 읽으면 0
+function pieceGram(nm: string) {
+  const t = String(nm)
+  const rg = t.match(/(\d+)\s*[-~]\s*(\d+)\s*g(?!\w)/i); if (rg) return Math.round((Number(rg[1]) + Number(rg[2])) / 2)
+  const one = t.match(/(\d+)\s*g\s*(?:이상|이하|내외)/i); if (one) return Number(one[1])
+  const kg = t.match(/(\d+(?:\.\d+)?)\s*kg/i), cnt = t.match(/(\d+)\s*(?:[-~]\s*(\d+))?\s*(?:과|입|수|개|통)(?!\w)/)
+  if (kg && cnt) { const c = cnt[2] ? (Number(cnt[1]) + Number(cnt[2])) / 2 : Number(cnt[1]); if (c > 0) return Math.round(Number(kg[1]) * 1000 / c) }
+  return 0
+}
 const clean = (x: string) => String(x || "").replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}✅]/gu, "").replace(/맛없으면\s*환불/g, "").replace(/\s{2,}/g, " ").trim()
 
 export default async (req: Request) => {
@@ -94,6 +103,7 @@ export default async (req: Request) => {
           jobId, origin, tpl, templateId: job.templateId, name, displayName: name,
           options: opts.map((o: any, i: number) => ({ name: optNames[i], price: priceOf(Number(o.price) + Number(o.shippingFee || 0), cfg) })),
           facts: `도매 공급 상품. 상품명: ${name}. 원산지·생산자 등 확인되지 않은 정보는 '상세페이지 참조'로 적는다. 무료배송.`,
+          perPieceGram: Object.fromEntries(optNames.map((n: string) => [n, pieceGram(n)]).filter((x: any) => x[1] > 0)),
           mainImage, contentImages, photos: [], vendorId: v.id, fullAttr: true, requestApproval: !!job.requestApproval,
           outboundShippingPlaceCode: job.outboundShippingPlaceCode, returnCenterCode: job.returnCenterCode, deliveryCompanyCode: job.deliveryCompanyCode,
         })
