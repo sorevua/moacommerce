@@ -14,6 +14,16 @@ export default async () => {
   const inquiryNow = [7, 13, 19].includes(h) && m < 30
   // 인스타 업로드는 30초 넘게 걸려서 백그라운드 작업으로 넘긴다 (예약 시간이 됐을 때만 실제로 올림)
   try { await fetch((Netlify.env.get("URL") || "https://volqavo.com") + "/.netlify/functions/insta-publish-background", { method: "POST", headers: { "x-internal": internalKey() }, body: "{}" }) } catch (err) { console.error("insta publish", err) }
+  // 예약해 둔 홍보 게시물(/promo/schedule.json): 시간이 되면 한 번만 인스타에 올린다
+  try {
+    const base = Netlify.env.get("URL") || "https://volqavo.com"
+    const list: any[] = await (await fetch(base + "/promo/schedule.json", { headers: { "cache-control": "no-cache" } })).json()
+    for (const p of Array.isArray(list) ? list : []) {
+      const at = Date.parse(p.at || "")
+      if (!p.key || !(at <= Date.now()) || Date.now() - at > 6 * 3600e3) continue // 6시간 넘게 지난 예약은 올리지 않음
+      await fetch(base + "/.netlify/functions/promo-post-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify({ key: p.key, files: (p.files || []).map((f: string) => (f.startsWith("http") ? f : base + f)), caption: p.caption }) })
+    }
+  } catch (err) { console.error("promo schedule", err) }
   if (inquiryNow) {
     try { await fetch((Netlify.env.get("URL") || "https://volqavo.com") + "/.netlify/functions/inquiry-sync-background", { method: "POST", headers: { "x-internal": internalKey() }, body: "{}" }) } catch (err) { console.error("inquiry trigger", err) }
   }
