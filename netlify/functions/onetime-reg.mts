@@ -32,6 +32,8 @@ export default async (req: Request) => {
     const d = Object.values(st?.done || {}) as any[]
     out.ok = d.filter((x) => x.ok).length; out.fail = d.filter((x) => !x.ok).length
     out.linkLeft = st?.linkLeft; out.linked = d.filter((x) => x.linked).length
+    out.left = (st?.total || 0) - d.length
+    if (u.searchParams.get("brief") === "1") { out.fails = d.filter((x) => !x.ok).map((x) => `${x.name} [${x.tries || 1}]: ${String(x.error).slice(0, 160)}`); return new Response(JSON.stringify(out, null, 1), { headers: { "content-type": "application/json; charset=utf-8" } }) }
     out.list = d.map((x) => x.ok ? `OK ${x.name} #${x.sellerProductId} (${x.options?.length}옵션) ${x.cpStatus || ""} 연결 ${x.linkedCount ?? "-"} ${x.shipFix ? "출고일수정:" + x.shipFix : ""} ${x.linkError || ""}` : `FAIL ${x.name}: ${x.error}`)
   }
   if (act === "reset") { const s2 = getStore({ name: "admin-settings", consistency: "strong" }); const st: any = (await s2.get("lucky-reg", { type: "json" })) || { done: {} }; for (const k of Object.keys(st.done)) if (!st.done[k].ok) delete st.done[k]; st.running = false; await s2.setJSON("lucky-reg", st); out.reset = true }

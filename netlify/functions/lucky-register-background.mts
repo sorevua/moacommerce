@@ -129,11 +129,11 @@ export default async (req: Request) => {
       }
       const left = (Object.values(st.done) as any[]).filter((d) => d.ok && !d.linked && !d.linkError).length
       st.running = false; st.linkLeft = left; await save()
-      if (left > 0 && n > 0 && !job.once) await fetch(origin + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify({ ...job, token: undefined }) })
       return
     }
     const want: string[] = (job.productIds?.length ? job.productIds : plist.map((p) => p.id)).filter((id: string) => { const p = plist.find((x) => x.id === id); return p && !SKIP.test(p.name) })
-    const todo = want.filter((id) => !st.done[id]?.ok && !(st.done[id]?.error && !job.retry))
+    // 실패한 것은 retry 일 때만 다시, 같은 상품은 최대 3번까지만
+    const todo = want.filter((id) => !st.done[id]?.ok && !(st.done[id]?.error && (!job.retry || Number(st.done[id]?.tries || 1) >= 3)))
     st.total = want.length; st.left = todo.length; await save()
     const tpl = await getProduct(String(job.templateId))
     let n = 0
@@ -187,13 +187,13 @@ export default async (req: Request) => {
         if (!r?.ok) throw new Error((r?.error || "등록 실패") + " | " + (r?.log || []).slice(-3).join(" / "))
         st.done[id] = { ok: true, name, sellerProductId: r.sellerProductId, options: opts.map((o: any, i: number) => ({ id: o.id, name: optNames[i] })), at: new Date().toISOString(), log: (r.log || []).slice(-4) }
       } catch (e: any) {
-        st.done[id] = { ok: false, name, error: String(e?.message || e).slice(0, 600), at: new Date().toISOString() }
+        st.done[id] = { ok: false, name, error: String(e?.message || e).slice(0, 600), at: new Date().toISOString(), tries: Number(st.done[id]?.tries || 0) + 1 }
       }
       st.left = want.filter((x) => !st.done[x]?.ok && !st.done[x]?.error).length; await save()
     }
     const remain = want.filter((x) => !st.done[x]).length
     st.running = remain > 0 && !job.once; await save()
-    if (remain === 0 && !job.once) await fetch(origin + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify({ ...job, token: undefined, mode: "link" }) })
-    if (remain > 0 && !job.once) await fetch(origin + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify({ ...job, token: undefined, retry: false }) })
+
+    st.running = false; await save() // 스스로 다음 묶음을 부르지 않는다 (Netlify 가 함수 연쇄 호출을 막음). 바깥에서 묶음마다 다시 부른다
   } catch (e: any) { st.running = false; st.error = String(e?.message || e); await save() }
 }
