@@ -15,7 +15,7 @@ async function driveFiles(link: string) {
   if (!id) return []
   const r = await fetch(`https://drive.google.com/embeddedfolderview?id=${id}#list`, { headers: { "accept-language": "ko" } })
   const html = await r.text()
-  return [...html.matchAll(/\/file\/d\/([\w-]+)\/[^"]*"[\s\S]*?flip-entry-title">([^<]+)</g)].map((m) => ({ id: m[1], name: m[2] })).filter((f) => /\.(png|jpe?g|webp)$/i.test(f.name))
+  return [...html.matchAll(/\/file\/d\/([\w-]+)\/[^"]*"[\s\S]*?flip-entry-title">([^<]+)</g)].map((m) => ({ id: m[1], name: m[2].normalize("NFC") })).filter((f) => /\.(png|jpe?g|webp)$/i.test(f.name))
 }
 // 드라이브 사진을 JPG로 줄여 우리 저장소에 복사한다 (원본이 지워져도 상세페이지가 깨지지 않게)
 async function copyImage(origin: string, fileId: string, key: string, opt: string) {
