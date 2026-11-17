@@ -12,3 +12,10 @@
 # 쿠팡 사진을 Netlify 이미지 CDN으로 줄여서·캐시해서 보여 준다 (관리자 화면 속도)
 [images]
   remote_images = ["https://[a-z0-9]+\\.coupangcdn\\.com/.*", "https://lh3\\.googleusercontent\\.com/d/.*"]
+
+# 홍보용 짧은 주소 → 쿠팡 상품
+[[redirects]]
+  from = "/gyul"
+  to = "https://www.coupang.com/vp/products/9826177657?itemId=29430777295&vendorItemId=96340580075"
+  status = 302
+  force = true
