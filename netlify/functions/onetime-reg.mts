@@ -14,5 +14,13 @@ export default async (req: Request) => {
     const s: any = await getStore({ name: "admin-settings", consistency: "strong" }).get("settings", { type: "json" })
     out.settings = s
   }
+  if (act === "status") {
+    const st: any = await getStore({ name: "admin-settings", consistency: "strong" }).get("lucky-reg", { type: "json" })
+    out.running = st?.running; out.error = st?.error; out.total = st?.total; out.at = st?.at
+    const d = Object.values(st?.done || {}) as any[]
+    out.ok = d.filter((x) => x.ok).length; out.fail = d.filter((x) => !x.ok).length
+    out.list = d.map((x) => x.ok ? `OK ${x.name} #${x.sellerProductId} (${x.options?.length}옵션) ${(x.log || []).join(" / ").slice(0, 700)}` : `FAIL ${x.name}: ${x.error}`)
+  }
+  if (act === "reset") { const s2 = getStore({ name: "admin-settings", consistency: "strong" }); const st: any = (await s2.get("lucky-reg", { type: "json" })) || { done: {} }; for (const k of Object.keys(st.done)) if (!st.done[k].ok) delete st.done[k]; st.running = false; await s2.setJSON("lucky-reg", st); out.reset = true }
   return new Response(JSON.stringify(out, null, 1), { headers: { "content-type": "application/json; charset=utf-8" } })
 }
