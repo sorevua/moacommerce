@@ -2,6 +2,7 @@ import type { Config } from "@netlify/functions"
 import { coupangConfigured, syncCoupangOrders, recordSyncError } from "./_lib/coupang.mts"
 import { naverConfigured, syncNaverOrders } from "./_lib/naver.mts"
 import { internalKey } from "./_lib/auth.mts"
+import { getStore } from "@netlify/blobs"
 import { syncLuckyOrders } from "./_lib/lucky-sync.mts"
 
 // 30분마다 쿠팡·네이버 결제완료 주문을 가져온다 (Make 중계 사용량 절약을 위해 30분 간격)
@@ -23,6 +24,15 @@ export default async () => {
   if (naverConfigured()) {
     try { console.log("naver sync", await syncNaverOrders()) } catch (err) { console.error("naver sync", err) }
   }
+  // 쿠팡에 올린 행운프레시 상품 중 옵션 연결이 안 끝난 것이 있으면(승인 지연·반려 후 재승인) 이어서 연결한다
+  try {
+    const reg: any = await getStore({ name: "admin-settings", consistency: "strong" }).get("lucky-reg", { type: "json" })
+    if (Object.values(reg?.done || {}).some((d: any) => d.ok && !d.linked)) {
+      for (const d of Object.values(reg.done) as any[]) if (d.ok && !d.linked) delete d.linkError
+      await getStore({ name: "admin-settings", consistency: "strong" }).setJSON("lucky-reg", reg)
+      await fetch((Netlify.env.get("URL") || "https://volqavo.com") + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify({ mode: "link", once: true, shipDays: 3 }) })
+    }
+  } catch (err) { console.error("lucky link", err) }
   // 행운프레시(B2B)에 넣은 주문의 결제 상태·송장 가져오기 → 쿠팡·네이버에 송장 등록
   try { console.log("lucky sync", await syncLuckyOrders()) } catch (err) { console.error("lucky sync", err) }
 }
