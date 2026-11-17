@@ -1,6 +1,7 @@
 // 임시 확인용 (확인 후 삭제)
 import { getStore } from "@netlify/blobs"
 import { outboundPlaces, returnCenters } from "./_lib/coupang.mts"
+import { internalKey } from "./_lib/auth.mts"
 export default async (req: Request) => {
   const u = new URL(req.url), t = Netlify.env.get("ONETIME_TOKEN") || ""
   if (!t || u.searchParams.get("t") !== t) return new Response("no", { status: 404 })
@@ -13,6 +14,12 @@ export default async (req: Request) => {
     out.products = (c?.products || []).map((p: any) => ({ id: p.sellerProductId, name: p.sellerProductName, status: p.status, items: (p.items || []).length, delivery: p.delivery }))
     const s: any = await getStore({ name: "admin-settings", consistency: "strong" }).get("settings", { type: "json" })
     out.settings = s
+  }
+  if (act === "start") {
+    const ids = (u.searchParams.get("ids") || "").split(",").filter(Boolean)
+    const body = { productIds: ids, templateId: "16419735114", outboundShippingPlaceCode: "25572192", returnCenterCode: "1002729419", deliveryCompanyCode: "CJGLS", requestApproval: u.searchParams.get("approve") === "1", once: u.searchParams.get("once") === "1", retry: u.searchParams.get("retry") === "1", batch: Number(u.searchParams.get("batch") || 8) }
+    const r = await fetch(u.origin + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey() }, body: JSON.stringify(body) })
+    out.started = r.status; out.body = body
   }
   if (act === "status") {
     const st: any = await getStore({ name: "admin-settings", consistency: "strong" }).get("lucky-reg", { type: "json" })
