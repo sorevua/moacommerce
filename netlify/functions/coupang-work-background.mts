@@ -30,20 +30,34 @@ async function refreshProducts() {
   await store().setJSON("coupang-products", { ...prev, running: true, startedAt: now(), error: "" })
   try {
     const list = (await listProducts()).filter((p: any) => p.statusName !== "상품삭제" && p.statusName !== "DELETED")
+    // 도매(행운프레시) 상품은 옵션이 수백 개라 옵션마다 재고를 묻지 않는다 (Make 크레딧 절약).
+    // 판매 여부는 자동 판매중지 기록으로 알고, 한 번 불러온 상품은 상태가 같으면 다시 부르지 않는다.
+    const lk = new Map<string, any>()
+    try {
+      const vs = getStore({ name: "admin-vendors", consistency: "strong" }); const { blobs } = await vs.list()
+      for (const b of blobs) { const v: any = await vs.get(b.key, { type: "json" }); if (v?.lucky) for (const x of v.products || []) if (x.coupangItemId) lk.set(String(x.coupangItemId), x) }
+    } catch {}
+    const prevBy = new Map<string, any>((prev.products || []).map((r: any) => [String(r.sellerProductId), r]))
     const rows = await pool(list, 3, async (sp: any) => {
       const id = String(sp.sellerProductId)
       try {
+        const old = prevBy.get(id)
+        if (old?.lucky && old.status === sp.statusName && (old.items || []).length) {
+          return { ...old, items: old.items.map((i: any) => ({ ...i, onSale: lk.has(String(i.vendorItemId)) ? !lk.get(String(i.vendorItemId)).autoStopped : i.onSale })) }
+        }
         const p = await getProduct(id)
+        const isLucky = (p.items || []).some((it: any) => lk.has(String(it.vendorItemId || "")))
         const items = await pool(p.items || [], 3, async (it: any) => {
           const vid = it.vendorItemId ? String(it.vendorItemId) : ""
-          const inv = vid ? await getInventory(vid).catch(() => null) : null
+          const lx = lk.get(vid)
+          const inv = vid && !isLucky ? await getInventory(vid).catch(() => null) : null
           return {
             vendorItemId: vid,
             itemName: it.itemName,
             image: (() => { const r = (it.images || []).find((x: any) => x.imageType === "REPRESENTATION") || (it.images || [])[0]; return r ? normImg(r.cdnPath || r.vendorPath) : "" })(),
             salePrice: inv?.salePrice ?? it.salePrice,
             originalPrice: it.originalPrice,
-            onSale: inv ? !!inv.onSale : null,
+            onSale: inv ? !!inv.onSale : isLucky ? (lx ? !lx.autoStopped : /승인완료|APPROVED/.test(String(sp.statusName || ""))) : null,
             stock: inv?.amountInStock ?? it.maximumBuyCount ?? null,
           }
         })
@@ -51,6 +65,7 @@ async function refreshProducts() {
         const c = extractContent(p)
         return {
           sellerProductId: id,
+          lucky: isLucky || undefined,
           sellerProductName: p.sellerProductName,
           displayProductName: p.displayProductName || "",
           status: sp.statusName,
