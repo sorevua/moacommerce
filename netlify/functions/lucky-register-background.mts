@@ -136,9 +136,12 @@ export default async (req: Request) => {
       for (const [pid, d] of Object.entries(st.done) as any) {
         if (!d.ok || d.linked || Date.now() - started > 11 * 60e3) continue
         try {
-          const cp: any = await getProduct(String(d.sellerProductId))
-          d.cpStatus = cp.statusName
-          const items: any[] = cp.items || []
+          // 등급별로 나눠 올린 상품(sellerProductIds 여러 개)도 모두 확인한다
+          const spids: string[] = (d.sellerProductIds && d.sellerProductIds.length ? d.sellerProductIds : [d.sellerProductId]).map(String)
+          const cps: any[] = []
+          for (const sp of spids) cps.push(await getProduct(sp))
+          d.cpStatus = cps.map((c) => c.statusName).join(",")
+          const items: any[] = cps.flatMap((c) => c.items || [])
           let filled = 0
           for (const o of d.options || []) {
             const it = items.find((x) => x.itemName === o.name)
@@ -147,11 +150,14 @@ export default async (req: Request) => {
           }
           if (filled) { v.updatedAt = new Date().toISOString(); await vendors().setJSON(v.id, v) }
           const days = Number(job.shipDays || 0)
-          if (days && items.some((x) => Number(x.outboundShippingTimeDay) !== days)) {
-            for (const x of items) x.outboundShippingTimeDay = days
-            cp.requested = true
-            const r: any = await call("PUT", "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products", "", cp)
-            d.shipFix = String(r?.code || r?.message || "").slice(0, 80)
+          for (const cp of cps) {
+            const its: any[] = cp.items || []
+            if (days && its.some((x) => Number(x.outboundShippingTimeDay) !== days)) {
+              for (const x of its) x.outboundShippingTimeDay = days
+              cp.requested = true
+              const r: any = await call("PUT", "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products", "", cp)
+              d.shipFix = String(r?.code || r?.message || "").slice(0, 80)
+            }
           }
           d.linkedCount = filled; d.linked = filled === (d.options || []).length; n++
         } catch (e: any) { d.linkError = String(e?.message || e).slice(0, 200) }
