@@ -9,7 +9,7 @@ export default async (req: Request) => {
   const a = u.searchParams.get("a") || "status"
   if (a === "reg") {
     const ids = (u.searchParams.get("ids") || "").split(",").filter(Boolean)
-    const body = { token: t, retry: true, once: true, batch: Number(u.searchParams.get("batch") || 4), productIds: ids, split: u.searchParams.get("split") === "1", templateId: "16419735114", requestApproval: true, shipDays: 2, outboundShippingPlaceCode: 25572192, returnCenterCode: "1002729419", deliveryCompanyCode: "CJGLS", gradeGrams: { "01KZAJT1N2CGN7010G3N8Q2RCE": { "중소과": 70, "중과": 85, "대과": 95 }, "01KZTCN32HHT1FCYGJ8Q590R56": { "중과": 280, "중대과": 310 } } }
+    const body = { token: t, retry: true, once: true, batch: Number(u.searchParams.get("batch") || 4), productIds: ids, split: u.searchParams.get("split") === "1", templateId: "16419735114", requestApproval: true, shipDays: 2, outboundShippingPlaceCode: 25572192, returnCenterCode: "1002729419", deliveryCompanyCode: "CJGLS", gradeGrams: { "01KZAJT1N2CGN7010G3N8Q2RCE": { "중소과": 70, "중과": 85, "대과": 95 }, "01KZTCN32HHT1FCYGJ8Q590R56": { "중과": 280, "중대과": 310, "특대과": 400 } } }
     if (u.searchParams.get("reset") === "1") { const s = getStore({ name: "admin-settings", consistency: "strong" }); const st: any = (await s.get("lucky-reg", { type: "json" })) || { done: {} }; for (const id of ids) if (st.done[id] && !st.done[id].ok) delete st.done[id]; await s.setJSON("lucky-reg", st) }
     const r = await fetch(u.origin + "/.netlify/functions/lucky-register-background", { method: "POST", headers: { "x-internal": internalKey(), "content-type": "application/json" }, body: JSON.stringify(body) })
     out.started = r.status
