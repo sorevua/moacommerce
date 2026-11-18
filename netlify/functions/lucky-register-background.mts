@@ -202,11 +202,23 @@ export default async (req: Request) => {
           else v.products.push({ name: nm, supplyPrice: supply, coupangItemId: "", naverItemId: "", luckyProductId: p.id, luckyOptionId: o.id, luckyProductName: String(p.name).trim(), luckyPhotos: p.photoDriveLink || "", luckySoldOut: o.status !== "판매중" })
         }
         v.updatedAt = new Date().toISOString(); await vendors().setJSON(v.id, v)
+        const allNames = opts.map((o: any) => clean(`${o.name}${o.prefixName ? " " + o.prefixName : ""}`).slice(0, 60))
+        // 2026-11-18: 등급만 다르고 무게가 같은 옵션(대 1kg / 특 1kg, 청갓 1단 / 홍갓 1단)은 쿠팡이 '중복된 옵션값'으로 거절한다
+        //   → job.split 이면 등급별로 상품을 나눠 등록한다 (상품명 뒤에 등급을 붙임). 이미 등록된 등급은 다시 하지 않는다
+        const gkey = (n: string) => n.replace(/\([^)]*\)/g, " ").replace(/\d+(?:\.\d+)?\s*(?:kg|g|과|입|단|팩|봉|개|박스)/gi, " ").replace(/\s+/g, " ").trim()
+        const groups: { suffix: string; idx: number[] }[] = []
+        if (job.split) { for (let i = 0; i < allNames.length; i++) { const k = gkey(allNames[i]); let gr = groups.find((g) => g.suffix === k); if (!gr) { gr = { suffix: k, idx: [] }; groups.push(gr) } gr.idx.push(i) } }
+        else groups.push({ suffix: "", idx: allNames.map((_: any, i: number) => i) })
+        const parts: Record<string, string> = { ...(st.done[id]?.parts || {}) }
+        const partErr: string[] = []
+        for (const g of groups) {
+        if (parts[g.suffix]) continue
+        const optNames = g.idx.map((i) => allNames[i]), gopts = g.idx.map((i) => opts[i])
+        const pname = g.suffix ? `${name} ${g.suffix}` : name
         const jobId = `lk-${id}-${Date.now()}`
-        const optNames = opts.map((o: any) => clean(`${o.name}${o.prefixName ? " " + o.prefixName : ""}`).slice(0, 60))
         await createNew({
-          jobId, origin, tpl, templateId: job.templateId, name, displayName: name,
-          options: opts.map((o: any, i: number) => ({ name: optNames[i], price: priceOf(Number(o.price) + Number(o.shippingFee || 0), cfg) })),
+          jobId, origin, tpl, templateId: job.templateId, name: pname, displayName: pname,
+          options: gopts.map((o: any, i: number) => ({ name: optNames[i], price: priceOf(Number(o.price) + Number(o.shippingFee || 0), cfg) })),
           facts: `도매 공급 상품. 상품명: ${name}. 원산지·생산자 등 확인되지 않은 정보는 '상세페이지 참조'로 적는다. 무료배송.`,
           // 개당 중량을 못 읽으면 '1박스 = 전체 무게'로 적는다 (수량 1개 × 전체 무게, 지어낸 숫자를 쓰지 않음)
           perPieceGram: Object.fromEntries(optNames.map((n: string) => [n, pieceGram(n) || totalGram(n)]).filter((x: any) => x[1] > 0)),
@@ -214,10 +226,14 @@ export default async (req: Request) => {
           outboundShippingPlaceCode: job.outboundShippingPlaceCode, returnCenterCode: job.returnCenterCode, deliveryCompanyCode: job.deliveryCompanyCode,
         })
         const r: any = await settings().get(`create-${jobId}`, { type: "json" })
-        if (!r?.ok) throw new Error((r?.error || "등록 실패") + " | " + (r?.log || []).slice(-3).join(" / "))
-        st.done[id] = { ok: true, name, sellerProductId: r.sellerProductId, options: opts.map((o: any, i: number) => ({ id: o.id, name: optNames[i] })), at: new Date().toISOString(), log: (r.log || []).slice(-4) }
+        if (!r?.ok) { partErr.push((g.suffix ? `[${g.suffix}] ` : "") + (r?.error || "등록 실패") + " | " + (r?.log || []).slice(-3).join(" / ")); continue }
+        parts[g.suffix] = String(r.sellerProductId)
+        }
+        if (partErr.length) { st.done[id] = { ok: false, name, parts, error: partErr.join(" ;; ").slice(0, 600), at: new Date().toISOString(), tries: Number(st.done[id]?.tries || 0) + 1 }; throw null }
+        const spids = Object.values(parts)
+        st.done[id] = { ok: true, name, sellerProductId: spids[0], sellerProductIds: spids, parts, options: opts.map((o: any, i: number) => ({ id: o.id, name: allNames[i] })), at: new Date().toISOString() }
       } catch (e: any) {
-        st.done[id] = { ok: false, name, error: String(e?.message || e).slice(0, 600), at: new Date().toISOString(), tries: Number(st.done[id]?.tries || 0) + 1 }
+        if (e !== null) st.done[id] = { ok: false, name, parts: st.done[id]?.parts, error: String(e?.message || e).slice(0, 600), at: new Date().toISOString(), tries: Number(st.done[id]?.tries || 0) + 1 }
       }
       st.left = want.filter((x) => !st.done[x]?.ok && !st.done[x]?.error).length; await save()
     }
