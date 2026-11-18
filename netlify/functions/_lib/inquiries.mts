@@ -1,5 +1,6 @@
 // 고객 문의: 쿠팡·네이버에서 모으고, AI 답변 초안을 만들고, 승인하면 마켓에 등록한다
 import { getStore } from "@netlify/blobs"
+import { putIfNew } from "./blob-put.mts"
 import Anthropic from "@anthropic-ai/sdk"
 import { aiCreate } from "./ai.mts"
 import { HUMAN_RULES } from "./human.mts"
@@ -76,8 +77,7 @@ export async function syncInquiries() {
   const now = new Date().toISOString()
   for (const f of found) {
     const id = `${f.channel === "쿠팡" ? "cp" : "nv"}-${f.kind === "고객문의" ? "c" : "q"}-${f.marketId}`
-    const { modified } = await st().setJSON(id, { ...f, id, status: "대기", createdAt: now }, { onlyIfNew: true })
-    if (modified) result.added++
+    if (await putIfNew(st(), id, { ...f, id, status: "대기", createdAt: now })) result.added++ // 2026-11-18: 새 문의만 저장 (blob-put.mts)
   }
   // 초안이 없는 대기 문의에 AI 답변 초안 작성
   const copy: any = (await settings().get("cp-copy", { type: "json" })) || {}

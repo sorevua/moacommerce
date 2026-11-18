@@ -1,5 +1,6 @@
 // 네이버 커머스API — 등록한 고정 IP(Make 중계)를 거쳐 호출한다.
 import bcrypt from "bcryptjs"
+import { putIfNew } from "./blob-put.mts"
 import { getStore } from "@netlify/blobs"
 
 const HOST = "https://api.commerce.naver.com/external"
@@ -105,8 +106,7 @@ export async function syncNaverOrders() {
         market: { name: "naver", productOrderId: String(po.productOrderId), orderId: String(od.orderId || ""), productId: String(po.productId || ""), optionCode: String(po.optionCode || ""), status: po.productOrderStatus, orderedAt: od.paymentDate || od.orderDate, acknowledged: false, needsMapping: !map },
         createdAt: now, updatedAt: now,
       }
-      const { modified } = await orders.setJSON(key, o, { onlyIfNew: true })
-      if (modified) added++
+      if (await putIfNew(orders, key, o)) added++ // 2026-11-18: 새 주문만 저장 (blob-put.mts)
     }
   }
   for (const id of canceled) {

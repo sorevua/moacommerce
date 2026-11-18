@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto"
+import { putIfNew } from "./blob-put.mts"
 import { getStore } from "@netlify/blobs"
 
 // 쿠팡 OPEN API — 고정 IP가 필요해서 Make 웹훅(eu1 고정 송신 IP)을 거쳐 호출한다.
@@ -161,8 +162,7 @@ export async function syncCoupangOrders() {
         createdAt: now,
         updatedAt: now,
       }
-      const { modified } = await orders.setJSON(key, o, { onlyIfNew: true })
-      if (modified) added++
+      if (await putIfNew(orders, key, o)) added++ // 2026-11-18: 새 주문만 저장 (blob-put.mts)
     }
   }
 
