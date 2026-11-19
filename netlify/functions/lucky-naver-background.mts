@@ -15,6 +15,12 @@ function priceOf(supply: number, s: any) {
   const cp = up(cost / (1 - d.coupangFee * (1 + d.vatOnFee) - d.marginRate)), np = up(cost / (1 - (d.naverSalesFee + d.naverPayFee) * (1 + d.vatOnFee) - d.marginRate))
   return Number(d.sameMarketPrice) ? Math.max(cp, np) : cp
 }
+// 네이버 수수료만으로 계산한 가격 (마진율을 직접 지정할 때)
+function naverPrice(supply: number, margin: number, s: any) {
+  const d = { extraShipping: 0, naverSalesFee: 0.0273, naverPayFee: 0.033, vatOnFee: 0.1, roundUnit: 100, ...(s || {}) }
+  const cost = supply + Number(d.extraShipping || 0), unit = Number(d.roundUnit || 100)
+  return Math.ceil(cost / (1 - (d.naverSalesFee + d.naverPayFee) * (1 + d.vatOnFee) - margin) / unit) * unit
+}
 const clean = (x: string) => String(x || "").replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}✅]/gu, "").replace(/맛없으면\s*환불/g, "").replace(/\s{2,}/g, " ").trim()
 const kgOf = (n: string) => { const m = n.match(/(\d+(?:\.\d+)?)\s*kg/i); if (m) return m[1] + "kg"; const g = n.match(/(\d+)\s*g\s*\d*\s*팩|(\d+)\s*팩/); return g ? (n.match(/\d+\s*팩/) || [""])[0] : "" }
 
@@ -49,7 +55,7 @@ export default async (req: Request) => {
         const p = plist.find((x: any) => x.id === id); if (!p) throw new Error("행운 상품 목록에 없음")
         const d = reg.done?.[id]; if (!d?.ok) throw new Error("쿠팡 등록 정보 없음")
         const base = clean(p.name)
-        const opts = (p.options || []).filter((o: any) => o.status === "판매중").map((o: any) => ({ name: clean(`${o.name}${o.prefixName ? " " + o.prefixName : ""}`).slice(0, 25), price: priceOf(Number(o.price) + Number(o.shippingFee || 0), cfg) }))
+        const opts = (p.options || []).filter((o: any) => o.status === "판매중").map((o: any) => ({ name: clean(`${o.name}${o.prefixName ? " " + o.prefixName : ""}`).slice(0, 25), price: job.margin ? naverPrice(Number(o.price) + Number(o.shippingFee || 0), Number(job.margin), cfg) : priceOf(Number(o.price) + Number(o.shippingFee || 0), cfg) }))
         if (!opts.length) throw new Error("판매중 옵션 없음")
         // 가격순으로 묶기: 묶음 안에서 가장 비싼 옵션이 가장 싼 옵션의 2배를 넘지 않게
         opts.sort((a: any, b: any) => a.price - b.price)
