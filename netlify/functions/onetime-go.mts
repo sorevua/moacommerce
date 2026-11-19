@@ -20,8 +20,9 @@ export default async (req: Request) => {
       const q = u.searchParams.get("q") || ""
       return J((r || []).filter((c: any) => String(c.wholeCategoryName).includes(q)).slice(0, 50))
     }
+    if (a === "nraw") return J(await ncall("GET", u.searchParams.get("p") || "/", u.searchParams.get("q") || ""))
     if (a === "nreg") {
-      const body = { ids: (u.searchParams.get("ids") || "").split(",").filter(Boolean), dry: u.searchParams.get("dry") === "1" }
+      const body = JSON.parse(u.searchParams.get("job") || "{}")
       const r = await fetch(u.origin + "/.netlify/functions/lucky-naver-background", { method: "POST", headers: { "x-internal": internalKey(), "content-type": "application/json" }, body: JSON.stringify(body) })
       return J({ started: r.status })
     }
