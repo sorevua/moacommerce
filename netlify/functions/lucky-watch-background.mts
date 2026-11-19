@@ -32,7 +32,7 @@ export default async (req: Request) => {
     let calls = 0
     for (const x of v.products || []) {
       if (!x.luckyOptionId || !x.coupangItemId) continue
-      if (calls >= 60) { report.errors.push("한 번에 바꿀 수 있는 수(60)를 넘어 나머지는 다음 점검 때 처리합니다."); break }
+      if (calls >= 100) { report.errors.push("한 번에 바꿀 수 있는 수(100)를 넘어 나머지는 다음 점검 때 처리합니다."); break }
       const o = by.get(x.luckyOptionId), soldOut = !o || o.status !== "판매중"
       try {
         if (soldOut && !x.autoStopped) {
@@ -53,6 +53,12 @@ export default async (req: Request) => {
             const r: any = await changePrice(String(x.coupangItemId), np); calls++
             if (!okRes(r)) throw new Error("가격 변경 실패: " + JSON.stringify(r).slice(0, 120))
             report.raised.push(`${x.name}: 공급가 ${x.supplyPrice} → ${supply}, 판매가 ${np}`)
+          } else if (supply < Number(x.supplyPrice || 0) && !soldOut) {
+            // 2026-11-19: 공급가가 내리면 같은 마진으로 판매가도 내린다 (가격 경쟁력)
+            const np = priceOf(supply, cfg)
+            const r: any = await changePrice(String(x.coupangItemId), np); calls++
+            if (!okRes(r)) throw new Error("가격 변경 실패: " + JSON.stringify(r).slice(0, 120))
+            report.raised.push(`${x.name}: 공급가 ${x.supplyPrice} → ${supply} (인하), 판매가 ${np}`)
           }
           x.supplyPrice = supply
         }
