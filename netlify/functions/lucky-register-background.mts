@@ -245,7 +245,7 @@ export default async (req: Request) => {
           facts: `도매 공급 상품. 상품명: ${pname}. ${gc?.facts || ""} 원산지·생산자 등 확인되지 않은 정보는 '상세페이지 참조'로 적는다. 무료배송.`,
           // 개당 중량을 못 읽으면 '1박스 = 전체 무게'로 적는다 (수량 1개 × 전체 무게, 지어낸 숫자를 쓰지 않음)
           perPieceGram: Object.fromEntries(optNames.map((n: string) => [n, gramOf(n)]).filter((x: any) => x[1] > 0)),
-          mainImage, contentImages, photos: [], vendorId: v.id, fullAttr: true, requestApproval: !!job.requestApproval, shipDays: Number(job.shipDays || 0),
+          mainImage, contentImages, photos: [], vendorId: v.id, fullAttr: true, noRemote: Array.isArray(job.noRemote) && job.noRemote.includes(id), requestApproval: !!job.requestApproval, shipDays: Number(job.shipDays || 0),
           outboundShippingPlaceCode: job.outboundShippingPlaceCode, returnCenterCode: job.returnCenterCode, deliveryCompanyCode: job.deliveryCompanyCode,
         })
         const r: any = await settings().get(`create-${jobId}`, { type: "json" })

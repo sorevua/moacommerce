@@ -722,6 +722,8 @@ export async function createNew(job: any) {
     if (job.deliveryCompanyCode) body.deliveryCompanyCode = String(job.deliveryCompanyCode)
     else if (body.outboundShippingPlaceCode) { const dc = await outboundCourier(body.outboundShippingPlaceCode).catch(() => ""); if (dc) body.deliveryCompanyCode = dc }
     if (job.returnCenterCode) body.returnCenterCode = String(job.returnCenterCode)
+    // 공급처가 제주·도서산간 배송을 안 하는 상품은 쿠팡에서도 도서산간 배송 불가로 등록 (주문이 들어오면 발주가 안 됨)
+    if (job.noRemote) body.remoteAreaDeliverable = "N"
     if (!body.brand) body.brand = String(job.brand || "모아커머스")
     if (job.returnInfo?.address) {
       // 반품지 계약이 없을 때: 업체 주소로 반품 정보를 직접 넣는다
