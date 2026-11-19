@@ -81,6 +81,30 @@ function totalGram(nm: string) {
   if (g) return Number(g[1]) * (pk ? Number(pk[1]) : 1)
   return 0
 }
+// 사진 폴더에서 대표사진·상세 사진을 골라 우리 저장소에 복사한다
+async function gatherImages(origin: string, link: string, pname: string, keyBase: string, mainRe?: string) {
+  const files = await driveFiles(link || "", pname)
+  if (!files.length) throw new Error("사진 폴더에서 이 상품 사진을 찾지 못했습니다.")
+  // 이름에 썸네일·대표가 있으면 대표사진 (job 에서 대표사진 파일 이름을 정해 줄 수도 있음). 나머지는 세로로 긴 것(상세페이지)과 일반 사진으로 나눈다
+  let thumb = (mainRe && files.find((f) => new RegExp(mainRe).test(f.name))) || files.find((f) => /썸네일|대표|메인/.test(f.name))
+  const rest = files.filter((f) => f !== thumb).sort((a, b) => Number(/상세/.test(b.name)) - Number(/상세/.test(a.name))).slice(0, 8)
+  const tall: string[] = [], normal: { url: string; id: string }[] = []
+  for (let i = 0; i < rest.length; i++) {
+    const key = `${keyBase}-d${i}.jpg`
+    const url = await copyImage(origin, rest[i].id, key, "w=860")
+    const md: any = (await pub().getMetadata(key).catch(() => null))?.metadata || {}
+    if (Number(md.h) > Number(md.w) * 2 || /상세/.test(rest[i].name)) tall.push(url); else normal.push({ url, id: rest[i].id })
+  }
+  const contentImages: string[] = tall.length ? tall.slice(0, 6) : normal.map((x) => x.url).slice(0, 8)
+  if (!contentImages.length && !thumb) throw new Error("사진 폴더에 쓸 수 있는 사진이 없습니다.")
+  let mainImage = ""
+  if (thumb) mainImage = await copyImage(origin, thumb.id, `${keyBase}-main.jpg`, "w=1000&h=1000&fit=cover")
+  else if (normal.length) mainImage = await copyImage(origin, normal[0].id, `${keyBase}-main.jpg`, "w=1000&h=1000&fit=cover")
+  else mainImage = await copyImage(origin, rest[0].id, `${keyBase}-main.jpg`, "w=1000&h=1000&fit=cover&position=top")
+  if (!contentImages.length) contentImages.push(mainImage)
+  return { mainImage, contentImages }
+}
+
 const clean = (x: string) => String(x || "").replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}✅]/gu, "").replace(/맛없으면\s*환불/g, "").replace(/\s{2,}/g, " ").trim()
 
 export default async (req: Request) => {
@@ -181,25 +205,9 @@ export default async (req: Request) => {
       try {
         const opts = (p.options || []).filter((o: any) => o.status === "판매중")
         if (!opts.length) throw new Error("판매중인 옵션이 없습니다.")
-        const files = await driveFiles(p.photoDriveLink || "", String(p.name))
-        if (!files.length) throw new Error("사진 폴더에서 이 상품 사진을 찾지 못했습니다.")
-        // 이름에 썸네일·대표가 있으면 대표사진. 나머지는 올려 보고 세로로 긴 것(상세페이지)과 일반 사진으로 나눈다
-        let thumb = files.find((f) => /썸네일|대표|메인/.test(f.name))
-        const rest = files.filter((f) => f !== thumb).sort((a, b) => Number(/상세/.test(b.name)) - Number(/상세/.test(a.name))).slice(0, 8)
-        const tall: string[] = [], normal: { url: string; id: string }[] = []
-        for (let i = 0; i < rest.length; i++) {
-          const key = `lk-${id}-d${i}.jpg`
-          const url = await copyImage(origin, rest[i].id, key, "w=860")
-          const md: any = (await pub().getMetadata(key).catch(() => null))?.metadata || {}
-          if (Number(md.h) > Number(md.w) * 2 || /상세/.test(rest[i].name)) tall.push(url); else normal.push({ url, id: rest[i].id })
-        }
-        const contentImages: string[] = tall.length ? tall.slice(0, 6) : normal.map((x) => x.url).slice(0, 8)
-        if (!contentImages.length && !thumb) throw new Error("사진 폴더에 쓸 수 있는 사진이 없습니다.")
-        let mainImage = ""
-        if (thumb) mainImage = await copyImage(origin, thumb.id, `lk-${id}-main.jpg`, "w=1000&h=1000&fit=cover")
-        else if (normal.length) mainImage = await copyImage(origin, normal[0].id, `lk-${id}-main.jpg`, "w=1000&h=1000&fit=cover")
-        else mainImage = await copyImage(origin, rest[0].id, `lk-${id}-main.jpg`, "w=1000&h=1000&fit=cover&position=top") // 상세페이지 맨 위를 잘라 대표사진으로
-        if (!contentImages.length) contentImages.push(mainImage)
+        // job.parts[상품ID] = [{ suffix, match, folder, main, grams }] : 옵션을 묶음별로 나눠, 묶음마다 다른 사진 폴더로 따로 등록 (예: 곶감 선물세트)
+        const custom: any[] | null = (job.parts && job.parts[id]) || null
+        const img0 = custom ? null : await gatherImages(origin, p.photoDriveLink || "", String(p.name), `lk-${id}`)
         // 업체 상품에 담기
         for (const o of p.options || []) {
           const nm = `${String(p.name).trim()} ${String(o.name).trim()}`, supply = Number(o.price) + Number(o.shippingFee || 0)
@@ -217,21 +225,26 @@ export default async (req: Request) => {
         //   → job.split 이면 등급별로 상품을 나눠 등록한다 (상품명 뒤에 등급을 붙임). 이미 등록된 등급은 다시 하지 않는다
         const gkey = (n: string) => n.replace(/\([^)]*\)/g, " ").replace(/\d+(?:\.\d+)?\s*(?:kg|g|과|입|단|팩|봉|개|박스)/gi, " ").replace(/\s+/g, " ").trim()
         const groups: { suffix: string; idx: number[] }[] = []
-        if (job.split) { for (let i = 0; i < allNames.length; i++) { const k = gkey(allNames[i]); let gr = groups.find((g) => g.suffix === k); if (!gr) { gr = { suffix: k, idx: [] }; groups.push(gr) } gr.idx.push(i) } }
+        if (custom) { for (const c of custom) { const re = new RegExp(c.match); const idx = allNames.map((n: string, i: number) => (re.test(n) ? i : -1)).filter((i: number) => i >= 0); if (idx.length) groups.push({ suffix: c.suffix, idx, c } as any) } }
+        else if (job.split) { for (let i = 0; i < allNames.length; i++) { const k = gkey(allNames[i]); let gr = groups.find((g) => g.suffix === k); if (!gr) { gr = { suffix: k, idx: [] }; groups.push(gr) } gr.idx.push(i) } }
         else groups.push({ suffix: "", idx: allNames.map((_: any, i: number) => i) })
         const parts: Record<string, string> = { ...(st.done[id]?.parts || {}) }
         const partErr: string[] = []
         for (const g of groups) {
         if (parts[g.suffix]) continue
         const optNames = g.idx.map((i) => allNames[i]), gopts = g.idx.map((i) => opts[i])
-        const pname = g.suffix ? `${name} ${g.suffix}` : name
+        const gc: any = (g as any).c
+        const pname = gc ? `${gc.name || name}` : g.suffix ? `${name} ${g.suffix}` : name
+        const { mainImage, contentImages } = gc ? await gatherImages(origin, gc.folder, pname, `lk-${id}-${groups.indexOf(g)}`, gc.main) : (img0 as any)
+        const gr: Record<string, number> = gc?.grams || {}
+        const gramOf = (n: string) => { const k = Object.keys(gr).find((x) => n.includes(x)); return k ? gr[k] : pieceGram(n) || totalGram(n) }
         const jobId = `lk-${id}-${Date.now()}`
         await createNew({
           jobId, origin, tpl, templateId: job.templateId, name: pname, displayName: pname,
           options: gopts.map((o: any, i: number) => ({ name: optNames[i], price: priceOf(Number(o.price) + Number(o.shippingFee || 0), cfg) })),
-          facts: `도매 공급 상품. 상품명: ${name}. 원산지·생산자 등 확인되지 않은 정보는 '상세페이지 참조'로 적는다. 무료배송.`,
+          facts: `도매 공급 상품. 상품명: ${pname}. ${gc?.facts || ""} 원산지·생산자 등 확인되지 않은 정보는 '상세페이지 참조'로 적는다. 무료배송.`,
           // 개당 중량을 못 읽으면 '1박스 = 전체 무게'로 적는다 (수량 1개 × 전체 무게, 지어낸 숫자를 쓰지 않음)
-          perPieceGram: Object.fromEntries(optNames.map((n: string) => [n, pieceGram(n) || totalGram(n)]).filter((x: any) => x[1] > 0)),
+          perPieceGram: Object.fromEntries(optNames.map((n: string) => [n, gramOf(n)]).filter((x: any) => x[1] > 0)),
           mainImage, contentImages, photos: [], vendorId: v.id, fullAttr: true, requestApproval: !!job.requestApproval, shipDays: Number(job.shipDays || 0),
           outboundShippingPlaceCode: job.outboundShippingPlaceCode, returnCenterCode: job.returnCenterCode, deliveryCompanyCode: job.deliveryCompanyCode,
         })
