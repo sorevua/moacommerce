@@ -73,9 +73,13 @@ export default async (req: Request) => {
         }
         html = `<div style="text-align:center">${html}</div>`
         st.done[id] = st.done[id] || { name: base, parts: {} }
+        const used = new Set<string>()
         for (const g of groups) {
           const kgs = [...new Set(g.map((o: any) => kgOf(o.name)).filter(Boolean))]
-          const name = (groups.length > 1 && kgs.length ? `${base} ${kgs.join(" ")}` : base).slice(0, 100)
+          let name = (groups.length > 1 && kgs.length ? `${base} ${kgs.join(" ")}` : base).slice(0, 100)
+          // 같은 상품을 나눴는데 이름이 겹치면 첫 옵션 이름을 붙여 구분한다
+          if (used.has(name)) name = `${base} ${g[0].name}`.slice(0, 100)
+          used.add(name)
           if (st.done[id].parts[name] || names.has(name)) { st.log.push(`건너뜀(이미 있음): ${name}`); continue }
           const sale = g[0].price
           const body = {
