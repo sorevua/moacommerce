@@ -43,20 +43,23 @@ export default async (req: Request) => {
     if (!d?.ok) continue
     const spids: string[] = (d.sellerProductIds?.length ? d.sellerProductIds : [d.sellerProductId]).filter(Boolean).map(String)
     for (const sp of spids) {
-      if (prog.done[sp] || n >= limit || Date.now() - started > 13 * 60e3) continue
+      const prev = prog.done[sp]
+      if ((prev && !(job.redo && !prev.v2)) || n >= limit || Date.now() - started > 13 * 60e3) continue
       try {
         const p: any = await getProduct(sp)
         const num = byId[id]
         for (const it of p.items || []) {
           if (num) it.images = [{ imageOrder: 0, imageType: "REPRESENTATION", vendorPath: `${BASE}m${num}.jpg` }, ...(it.images || []).filter((x: any) => x.imageType !== "REPRESENTATION")]
-          const old = (it.contents || []).filter((c: any) => !(c.contentDetails || []).some((x: any) => String(x.content || "").includes("/fp/")))
+          // 이미 한 번 넣은 상품이면 앞에 넣었던 이미지(쿠팡이 주소를 바꿔 저장함)를 개수만큼 빼고, 예전 글자 안내(lk-notice)는 지운다
+          const added = prev ? (prev.num ? 2 : 1) : 0
+          const old = (it.contents || []).slice(added).filter((c: any) => !(c.contentDetails || []).some((x: any) => /\/fp\/|lk-notice|평일 오전 8시/.test(String(x.content || ""))))
           it.contents = [img(`${BASE}delay.jpg`), ...(num ? [img(`${BASE}d${num}.jpg`)] : []), ...old]
         }
         if (id === ONION) for (const k of ["sellerProductName", "displayProductName"]) if (p[k] && !/2026/.test(p[k])) p[k] = String(p[k]).replace("햇양파", "2026년 햇양파").slice(0, 100)
         p.requested = true
         const r: any = await call("PUT", "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products", "", p)
         if (r && r.code && !/SUCCESS|200/i.test(String(r.code))) throw new Error(JSON.stringify(r).slice(0, 160))
-        prog.done[sp] = { id, num: num || "", at: new Date().toISOString() }; delete prog.fail[sp]
+        prog.done[sp] = { id, num: num || "", v2: true, at: new Date().toISOString() }; delete prog.fail[sp]
       } catch (e: any) { prog.fail[sp] = String(e?.message || e).slice(0, 200) }
       n++; await st.setJSON("lucky-photos", prog)
     }

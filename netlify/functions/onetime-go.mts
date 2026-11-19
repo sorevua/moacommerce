@@ -7,7 +7,7 @@ export default async (req: Request) => {
   const t = u.searchParams.get("t") || "", tok = Netlify.env.get("ONETIME_TOKEN") || ""
   if (!tok || t !== tok) return new Response("no", { status: 404 })
   if (u.searchParams.get("a") === "run") {
-    const r = await fetch(u.origin + "/.netlify/functions/lucky-photos-background", { method: "POST", headers: { "x-internal": internalKey(), "content-type": "application/json" }, body: JSON.stringify({ limit: Number(u.searchParams.get("limit") || 200) }) })
+    const r = await fetch(u.origin + "/.netlify/functions/lucky-photos-background", { method: "POST", headers: { "x-internal": internalKey(), "content-type": "application/json" }, body: JSON.stringify({ limit: Number(u.searchParams.get("limit") || 200), redo: u.searchParams.get("redo") === "1" }) })
     return Response.json({ started: r.status })
   }
   if (u.searchParams.get("a") === "chk") {
