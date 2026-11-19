@@ -119,10 +119,15 @@ export async function syncCoupangOrders() {
   // 쿠팡 옵션ID → 업체·상품 매핑
   const { blobs: vb } = await vendors.list()
   const vlist: any[] = (await Promise.all(vb.map((b) => vendors.get(b.key, { type: "json" })))).filter(Boolean)
-  const byItem = new Map<string, { vendorId: string; productName: string }>()
-  for (const v of vlist) for (const p of v.products || []) if (p.coupangItemId) byItem.set(String(p.coupangItemId).trim(), { vendorId: v.id, productName: p.name })
+  const byItem = new Map<string, { vendorId: string; productName: string; lucky: boolean }>()
+  for (const v of vlist) for (const p of v.products || []) if (p.coupangItemId) byItem.set(String(p.coupangItemId).trim(), { vendorId: v.id, productName: p.name, lucky: !!v.lucky })
+  // 행운프레시 상품 이름으로도 찾는다 (옵션ID 연결 전 주문)
+  const luckyV = vlist.find((v) => v.lucky)
 
-  const sheets = await fetchOrdersheets("ACCEPT")
+  // 2026-11-19: 행운프레시가 주문을 바로 '상품준비중'으로 넘기므로 결제완료(ACCEPT)와 상품준비중(INSTRUCT)을 모두 가져와 매출로 기록한다
+  const accept = await fetchOrdersheets("ACCEPT")
+  const instruct = await fetchOrdersheets("INSTRUCT").catch(() => [])
+  const sheets = [...accept, ...instruct]
   let added = 0
   const seenBoxes = new Set<string>()
   for (const s of sheets) {
@@ -132,7 +137,8 @@ export async function syncCoupangOrders() {
       const qty = Number(it.shippingCount || 0) - Number(it.cancelCount || 0) - Number(it.holdCountForCancel || 0)
       if (qty <= 0) continue
       const key = `coupang-${box}-${it.vendorItemId}`
-      const map = byItem.get(String(it.vendorItemId))
+      let map = byItem.get(String(it.vendorItemId))
+      if (!map && luckyV) { const nm = `${it.sellerProductName || ""} ${it.vendorItemName || ""}`; const norm = (x: string) => String(x).replace(/[^가-힣a-zA-Z0-9]/g, ""); const lp = (luckyV.products || []).find((p: any) => { if (!p.luckyProductName) return false; const opt = norm(String(p.name).slice(String(p.luckyProductName).length)); return norm(nm).includes(norm(p.luckyProductName)) && !!opt && norm(it.vendorItemName || "").includes(opt) }); if (lp) map = { vendorId: luckyV.id, productName: lp.name, lucky: true } }
       const now = new Date().toISOString()
       const o = {
         id: key,
@@ -148,7 +154,9 @@ export async function syncCoupangOrders() {
         recipientPhone: phoneFromE164(s.receiver?.safeNumber || s.receiver?.receiverNumber),
         recipientPhone2: "",
         message: s.parcelPrintMessage || "",
-        status: "접수",
+        // 행운프레시 상품은 행운이 쿠팡에서 직접 주문을 가져가 발주한다 → 우리는 매출 기록만 (발주완료로 둔다)
+        status: map?.lucky ? "발주완료" : "접수",
+        luckyAuto: !!map?.lucky,
         market: {
           name: "coupang",
           shipmentBoxId: box,
@@ -172,6 +180,9 @@ export async function syncCoupangOrders() {
   for (const b of ob) {
     const o: any = await orders.get(b.key, { type: "json" })
     if (!o || o.status !== "접수" || o.market?.acknowledged) continue
+    // 행운프레시 업체 주문은 행운이 처리하므로 '접수'에 남아 있으면 발주완료로 바꾼다 (취소 의심 표시도 하지 않음)
+    const vv = vlist.find((v) => v.id === o.vendorId)
+    if (vv?.lucky) { o.status = "발주완료"; o.luckyAuto = true; delete o.market.missingFromAccept; o.updatedAt = new Date().toISOString(); await orders.setJSON(o.id, o); continue }
     const gone = !seenBoxes.has(o.market?.shipmentBoxId)
     if (gone !== !!o.market?.missingFromAccept) {
       o.market.missingFromAccept = gone
