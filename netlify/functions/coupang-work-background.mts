@@ -786,7 +786,11 @@ export async function createNew(job: any) {
           if (a.dataType === "STRING" && job.fullAttr) v = nm.slice(0, 30) // 옵션 이름 전체를 써서 옵션끼리 겹치지 않게 (도매 상품은 등급 이름이 다양함)
           else if (a.dataType === "STRING" && gr) v = `${v} ${gr}`
         }
-        else if (/수량/.test(t)) v = `1${a.basicUnit && a.basicUnit !== "없음" ? a.basicUnit : "개"}`
+        else if (/수량/.test(t)) {
+          // 옵션 이름에 입수가 있으면(곶감 20입, 30구) 그 개수를 쓴다. 없으면 1개 (모든 옵션이 1개면 '중복된 옵션값'으로 거절될 수 있음)
+          const ip = job.fullAttr ? nm.replace(/\([^)]*\)/g, " ").match(/(\d+)\s*(?:입|구)(?![가-힣\w])/) : null
+          v = `${ip ? ip[1] : 1}${a.basicUnit && a.basicUnit !== "없음" ? a.basicUnit : "개"}`
+        }
         else if (/등급|크기|사이즈|과/.test(t)) v = (nm.match(/특대|대과|중과|소과|특|대|중|소/) || [""])[0]
         if (v) { it.attributes.push({ attributeTypeName: t, attributeValueName: v }); if (a.groupNumber && a.groupNumber !== "NONE") groupsDone.add(a.groupNumber) }
       }
