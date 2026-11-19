@@ -4,7 +4,7 @@ import { getStore } from "@netlify/blobs"
 
 export default async (req: Request) => {
   const key = new URL(req.url).pathname.split("/").pop() || ""
-  if (!/^([a-f0-9-]{36}|lk-[A-Za-z0-9]{20,32}-(main|d\d))\.jpg$/.test(key)) return new Response("Not found", { status: 404 })
+  if (!/^([a-f0-9-]{36}|lk-[A-Za-z0-9]{20,32}(?:-\d{1,2})?-(main|d\d))\.jpg$/.test(key)) return new Response("Not found", { status: 404 })
   const entry = await getStore({ name: "public-images", consistency: "strong" }).getWithMetadata(key, { type: "arrayBuffer" })
   if (!entry) return new Response("Not found", { status: 404 })
   return new Response(entry.data as ArrayBuffer, {
