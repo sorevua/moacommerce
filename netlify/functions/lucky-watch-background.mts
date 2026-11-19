@@ -54,8 +54,8 @@ export default async (req: Request) => {
             if (!okRes(r)) throw new Error("가격 변경 실패: " + JSON.stringify(r).slice(0, 120))
             report.raised.push(`${x.name}: 공급가 ${x.supplyPrice} → ${supply}, 판매가 ${np}`)
           } else if (supply < Number(x.supplyPrice || 0) && !soldOut) {
-            // 2026-11-19: 공급가가 내리면 같은 마진으로 판매가도 내린다 (가격 경쟁력)
-            const np = priceOf(supply, cfg)
+            // 2026-11-19 사장님 요청: 공급가가 내리면 마진 20%로 판매가를 다시 잡는다. 단 원래 판매가보다 비싸지지는 않게
+            const np = Math.min(priceOf(supply, { ...(cfg || {}), marginRate: 0.2 }), priceOf(Number(x.supplyPrice), cfg))
             const r: any = await changePrice(String(x.coupangItemId), np); calls++
             if (!okRes(r)) throw new Error("가격 변경 실패: " + JSON.stringify(r).slice(0, 120))
             report.raised.push(`${x.name}: 공급가 ${x.supplyPrice} → ${supply} (인하), 판매가 ${np}`)
