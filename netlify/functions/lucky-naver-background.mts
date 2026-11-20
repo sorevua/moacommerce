@@ -57,10 +57,10 @@ export default async (req: Request) => {
         const base = clean(p.name)
         const opts = (p.options || []).filter((o: any) => o.status === "판매중").map((o: any) => ({ name: clean(`${o.name}${o.prefixName ? " " + o.prefixName : ""}`).slice(0, 25), price: job.margin ? naverPrice(Number(o.price) + Number(o.shippingFee || 0), Number(job.margin), cfg) : priceOf(Number(o.price) + Number(o.shippingFee || 0), cfg) }))
         if (!opts.length) throw new Error("판매중 옵션 없음")
-        // 가격순으로 묶기: 묶음 안에서 가장 비싼 옵션이 가장 싼 옵션의 2배를 넘지 않게
+        // 가격순으로 묶기: 네이버 옵션가 한도 (기본가 1만원 미만 ±100%, 1만원 이상 ±50%)
         opts.sort((a: any, b: any) => a.price - b.price)
         const groups: any[][] = []
-        for (const o of opts) { const g = groups[groups.length - 1]; if (g && o.price <= g[0].price * 2) g.push(o); else groups.push([o]) }
+        for (const o of opts) { const g = groups[groups.length - 1]; if (g && o.price - g[0].price <= (g[0].price < 10000 ? g[0].price : Math.floor(g[0].price / 2))) g.push(o); else groups.push([o]) }
         // 대표사진·상세: 쿠팡 상품에서 가져온다
         const cp: any = await getProduct(String((d.sellerProductIds || [d.sellerProductId])[0]))
         const item = (cp.items || [])[0] || {}
