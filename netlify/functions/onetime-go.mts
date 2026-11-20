@@ -1,5 +1,6 @@
 // 임시: 11/20 행운 공지 반영 (타이벡 로얄과 옵션명, 감자 제주·도서산간 불가, 가격 점검 실행). 작업이 끝나면 지운다.
 import { internalKey } from "./_lib/auth.mts"
+import { getStore } from "@netlify/blobs"
 import { getProduct, call } from "./_lib/coupang.mts"
 const PUT = (p: any) => { p.requested = true; return call("PUT", "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products", "", p) }
 export default async (req: Request) => {
@@ -24,6 +25,7 @@ export default async (req: Request) => {
       p.remoteAreaDeliverable = "N"
       const r: any = await PUT(p); out.res = String(r?.code || r?.message || "").slice(0, 120)
     }
+    if (a === "wlog") { const st = getStore({ name: "admin-settings", consistency: "strong" }); const l: any = await st.get("lucky-watch", { type: "json" }); out.latest = (l || [])[0] }
     if (a === "watch") {
       const r = await fetch(u.origin + "/.netlify/functions/lucky-watch-background", { method: "POST", headers: { "x-internal": internalKey() }, body: "{}" })
       out.started = r.status
