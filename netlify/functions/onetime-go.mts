@@ -13,7 +13,7 @@ export default async (req: Request) => {
       const p: any = await getProduct("16460091645")
       const rows = (p.items || []).map((it: any) => it.itemName)
       if (a === "tibek") {
-        for (const it of p.items || []) if (/로얄과/.test(it.itemName)) it.itemName = String(it.itemName).replace("로얄과", "로얄소과").replace(/2S\s*~\s*M/g, "2S~S")
+        for (const it of p.items || []) if (/로얄과/.test(it.itemName)) it.itemName = String(it.itemName).replace("로얄과", "로얄소과").replace(/2S\s*[-~]\s*M/g, "2S-S")
         const r: any = await PUT(p); out.res = String(r?.code || r?.message || "").slice(0, 120)
       }
       out.before = rows; out.after = (p.items || []).map((it: any) => it.itemName)
