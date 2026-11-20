@@ -119,6 +119,7 @@ export default async (req: Request) => {
                   },
                 },
                 itselfProductionProductYn: false,
+                unitCapacity: { unitPriceYn: false },
                 seoInfo: { pageTitle: name, metaDescription: name },
               },
             },
