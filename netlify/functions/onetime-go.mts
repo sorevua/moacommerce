@@ -14,6 +14,9 @@ export default async (req: Request) => {
         out[k] = (r || []).slice(0, 15).map((x: any) => `${x.code}:${x.text}`)
       }
     }
+    if (a === "look") {
+      for (const no of NOS) { const c: any = await ncall("GET", "/v2/products/origin-products/" + no); out[no] = c.originProduct.name + " | " + (c.originProduct.detailAttribute.seoInfo?.sellerTags || []).map((x: any) => x.text).join(",") }
+    }
     if (a === "apply") {
       const tags = JSON.parse(u.searchParams.get("tags") || "[]")
       const only = u.searchParams.get("no")
