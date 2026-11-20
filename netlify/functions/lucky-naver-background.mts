@@ -2,6 +2,7 @@
 //  - 사진·상세페이지는 이미 쿠팡에 올린 같은 상품의 것을 그대로 쓴다
 //  - 네이버 옵션가 규칙(기본가의 +100% 이내) 때문에 가격대가 많이 벌어지면 상품을 나눠 올린다
 //  - 이미 네이버에 같은 이름으로 올린 상품은 다시 올리지 않는다
+//  - 태그(it.tags)와 상품 속성(it.attrs)이 없으면 등록하지 않는다 (가격비교 노출에 필요)
 import { getStore } from "@netlify/blobs"
 import { isLoggedIn, isInternal } from "./_lib/auth.mts"
 import { luckyProducts } from "./_lib/luckyfresh.mts"
@@ -54,6 +55,7 @@ export default async (req: Request) => {
       try {
         const p = plist.find((x: any) => x.id === id); if (!p) throw new Error("행운 상품 목록에 없음")
         const d = reg.done?.[id]; if (!d?.ok) throw new Error("쿠팡 등록 정보 없음")
+        if (!job.dry && (!Array.isArray(it.tags) || !it.tags.length || !Array.isArray(it.attrs) || !it.attrs.length)) throw new Error("태그·속성이 없어 등록하지 않음")
         const base = clean(p.name)
         const opts = (p.options || []).filter((o: any) => o.status === "판매중").map((o: any) => ({ name: clean(`${o.name}${o.prefixName ? " " + o.prefixName : ""}`).slice(0, 25), price: job.margin ? naverPrice(Number(o.price) + Number(o.shippingFee || 0), Number(job.margin), cfg) : priceOf(Number(o.price) + Number(o.shippingFee || 0), cfg) }))
         if (!opts.length) throw new Error("판매중 옵션 없음")
@@ -120,7 +122,9 @@ export default async (req: Request) => {
                 },
                 itselfProductionProductYn: false,
                 unitCapacity: { unitPriceYn: false },
-                seoInfo: { pageTitle: name, metaDescription: name },
+                seoInfo: { pageTitle: name, metaDescription: name, ...(Array.isArray(it.tags) && it.tags.length ? { sellerTags: it.tags.slice(0, 10) } : {}) },
+                // 상품 속성: 네이버 카테고리 속성값 (예: 품종·숙기·포장형태·보관방법). 확인된 값만 넣는다
+                ...(Array.isArray(it.attrs) && it.attrs.length ? { productAttributes: it.attrs } : {}),
               },
             },
             smartstoreChannelProduct: { channelProductName: name, storeKeepExclusiveProduct: false, naverShoppingRegistration: true, channelProductDisplayStatusType: "ON" },
