@@ -18,15 +18,15 @@ export default async (req: Request) => {
       const rows: any[] = []
       for (const it of p.items || []) {
         const from = String(it.itemName)
-        const to = from.replace("로얄과", "로얄소과").replace(/2S\s*~\s*M/g, "2S~S")
+        const to = from.replace("로얄과", "로얄소과").replace(/2S\s*[~-]\s*M/g, "2S-S")
         rows.push({ from, to })
-        if (u.searchParams.get("go") === "1" && to !== from) { it.itemName = to; for (const at of it.attributes || []) if (String(at.attributeValueName || "").includes("로얄과")) at.attributeValueName = String(at.attributeValueName).replace("로얄과", "로얄소과").replace(/2S\s*~\s*M/g, "2S~S") }
+        if (u.searchParams.get("go") === "1" && to !== from) { it.itemName = to; for (const at of it.attributes || []) if (String(at.attributeValueName || "").includes("로얄과")) at.attributeValueName = String(at.attributeValueName).replace("로얄과", "로얄소과").replace(/2S\s*[~-]\s*M/g, "2S-S") }
       }
       let res = ""
       if (u.searchParams.get("go") === "1") {
         p.requested = true; const r: any = await call("PUT", "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products", "", p); res = String(r?.code || r?.message || "")
         const reg: any = await st.get("lucky-reg", { type: "json" }); const d = reg?.done?.["01M4QSD8F3EPE1JN31AWK08C8F"]
-        if (d?.options) { for (const o of d.options) o.name = String(o.name).replace("로얄과", "로얄소과").replace(/2S\s*~\s*M/g, "2S~S"); await st.setJSON("lucky-reg", reg) }
+        if (d?.options) { for (const o of d.options) o.name = String(o.name).replace("로얄과", "로얄소과").replace(/2S\s*[~-]\s*M/g, "2S-S"); await st.setJSON("lucky-reg", reg) }
       }
       return J({ status: p.statusName, res, rows })
     }
