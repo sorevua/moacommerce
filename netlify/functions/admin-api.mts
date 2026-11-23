@@ -1,14 +1,14 @@
 import type { Config, Context } from "@netlify/functions"
 import { getStore } from "@netlify/blobs"
 import { randomUUID } from "node:crypto"
-import { isLoggedIn } from "./_lib/auth.mts"
+import { isLoggedIn, internalKey } from "./_lib/auth.mts"
 import { priceConfig } from "./_lib/pricing.mts"
 import { luckyConfigured, luckyWallet, luckyProducts, luckyPlaceOrder } from "./_lib/luckyfresh.mts"
 import { registerInvoice } from "./_lib/invoice.mts"
 import { syncLuckyOrders } from "./_lib/lucky-sync.mts"
 import { listInquiries, answerInquiry, skipInquiry } from "./_lib/inquiries.mts"
 import { naverConfigured, naverConfirm, naverDispatch, syncNaverOrders } from "./_lib/naver.mts"
-import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS, changePrice, stopSale, resumeSale, updateProductContent, cleanTags, returnCenters, outboundPlaces, predictCategory, productHistory } from "./_lib/coupang.mts"
+import { coupangConfigured, syncCoupangOrders, recordSyncError, acknowledge, uploadInvoice, COURIERS, changePrice, stopSale, resumeSale, updateProductContent, cleanTags, returnCenters, outboundPlaces, predictCategory, productHistory, getProduct, call } from "./_lib/coupang.mts"
 
 // ---------- 저장소 ----------
 const store = (name: string) => getStore({ name, consistency: "strong" })
@@ -481,6 +481,22 @@ export default async (req: Request, context: Context) => {
         return json({ ...sum, order: o })
       }
       if (id === "sync" && method === "POST") return json(await syncLuckyOrders())
+      // 지금 점검: 밤 12시 자동 점검(품절 판매중지·공급가 인상 시 판매가 인상)을 바로 한 번 돌린다 (배포 없이 공지 반영)
+      if (id === "watch" && method === "POST") {
+        const r = await fetch(url.origin + "/.netlify/functions/lucky-watch-background", { method: "POST", headers: { "x-internal": internalKey() }, body: "{}" })
+        return json({ started: r.status })
+      }
+      // 제주·도서산간 배송 막기: 쿠팡 등록상품ID의 도서산간 배송을 '불가'로 바꾼다
+      if (id === "noremote" && method === "POST") {
+        const b = await req.json().catch(() => ({}))
+        const sp = String(b.sellerProductId || "").replace(/\D/g, ""); if (!sp) return json({ error: "쿠팡 등록상품ID를 넣어 주세요." }, 400)
+        const p: any = await getProduct(sp)
+        if (p.remoteAreaDeliverable === "N") return json({ ok: true, name: p.sellerProductName, already: true })
+        p.remoteAreaDeliverable = "N"; p.requested = true
+        const r: any = await call("PUT", "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products", "", p)
+        if (!/SUCCESS/i.test(String(r?.code || ""))) return json({ error: String(r?.message || JSON.stringify(r)).slice(0, 200) }, 400)
+        return json({ ok: true, name: p.sellerProductName })
+      }
       if (id === "watch" && method === "GET") return json({ last: await settingsStore().get("lucky-watch-last", { type: "json" }), log: (await settingsStore().get("lucky-watch", { type: "json" })) || [] })
       if (id === "import" && method === "POST") {
         const body = await req.json()

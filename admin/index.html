@@ -202,6 +202,11 @@ nav button .ic{font-size:18px}
           <p class="note">행운프레시 공급가를 그대로 불러옵니다. 팔 옵션을 체크하고 [선택한 옵션 담기]를 누르면 [업체] → 행운프레시에 상품으로 들어가고, 거기서 쿠팡·네이버에 등록합니다. 발주 마감은 매일 09:30, 예치금(선입금) 방식입니다.</p>
           <div id="lkStatus" class="note" style="margin-top:8px">불러오는 중…</div>
           <div id="lkWatch" class="note" style="margin-top:6px"></div>
+          <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">
+            <button class="btn small dark" id="lkWatchNow">지금 점검 (품절·단가 공지 반영)</button>
+            <input id="lkNoRemoteId" placeholder="쿠팡 등록상품ID" style="width:170px">
+            <button class="btn small" id="lkNoRemote">제주·도서산간 배송 막기</button>
+          </div>
           <div class="row" style="margin-top:12px">
             <input id="lkq" placeholder="상품명으로 찾기 (예: 사과, 키위, 감귤)" style="flex:1;min-width:200px">
             <select id="lkf"><option value="">전체</option><option value="picked">담은 것만</option></select>
@@ -502,7 +507,7 @@ async function loadLucky() {
   renderLucky()
   try {
     const w = await api("lucky/watch"), l = w.last
-    $("#lkWatch").innerHTML = `🛑 <b>자동 판매중지 켜짐</b> — 하루 2번(05:50·13:50) 행운프레시에서 품절되거나 시즌이 끝나 사라진 옵션은 쿠팡에서 자동으로 판매중지하고, 다시 들어오면 자동으로 살립니다.${l ? ` 마지막 점검 ${new Date(l.at).toLocaleString("ko-KR")} · 중지 ${l.stopped} · 재개 ${l.resumed} · 가격 인상 ${l.raised}${l.errors ? ` · <span style="color:#b91c1c">오류 ${l.errors}</span>` : ""}` : " 아직 점검 기록이 없습니다."}`
+    $("#lkWatch").innerHTML = `🛑 <b>자동 판매중지 켜짐</b> — 매일 밤 12시에 행운프레시에서 품절되거나 시즌이 끝나 사라진 옵션은 쿠팡에서 자동으로 판매중지하고, 다시 들어오면 자동으로 살립니다.${l ? ` 마지막 점검 ${new Date(l.at).toLocaleString("ko-KR")} · 중지 ${l.stopped} · 재개 ${l.resumed} · 가격 인상 ${l.raised}${l.errors ? ` · <span style="color:#b91c1c">오류 ${l.errors}</span>` : ""}` : " 아직 점검 기록이 없습니다."}`
       + (w.log || []).slice(0, 3).map(r => `<details style="margin-top:4px"><summary style="cursor:pointer">${esc(new Date(r.at).toLocaleString("ko-KR"))} 변경 내역</summary>${[...r.stopped.map(x => "중지: " + x), ...r.resumed.map(x => "재개: " + x), ...r.raised.map(x => "인상: " + x), ...r.errors.map(x => "오류: " + x)].map(esc).join("<br>")}</details>`).join("")
   } catch {}
 }
@@ -536,6 +541,8 @@ function renderLucky() {
 $("#lkq").oninput = debounce(renderLucky, 250); $("#lkf").onchange = renderLucky
 $("#lkOpenAll").onclick = () => { lkVisible().forEach(p => lkOpen.add(p.id)); renderLucky() }
 $("#lkCloseAll").onclick = () => { lkOpen.clear(); renderLucky() }
+$("#lkWatchNow").onclick = async () => { try { await api("lucky/watch", { method: "POST" }); toast("점검을 시작했습니다. 1~2분 뒤 새로고침하면 변경 내역이 보입니다.") } catch (e) { toast(e.message) } }
+$("#lkNoRemote").onclick = async () => { const sp = $("#lkNoRemoteId").value.trim(); if (!sp) return toast("쿠팡 등록상품ID를 넣어 주세요."); if (!confirm(`쿠팡 상품 ${sp}의 제주·도서산간 배송을 막습니다. 쿠팡 재승인이 요청됩니다. 진행할까요?`)) return; try { const r = await api("lucky/noremote", { method: "POST", body: JSON.stringify({ sellerProductId: sp }) }); toast(r.already ? `이미 막혀 있습니다: ${r.name}` : `막았습니다: ${r.name}`) } catch (e) { toast(e.message) } }
 $("#lkRefresh").onclick = async () => { try { toast("행운프레시에서 받는 중…"); await api("lucky/refresh", { method: "POST" }); await loadLucky(); await loadAll(); toast("공급가를 새로 받았습니다.") } catch (e) { toast(e.message) } }
 $("#lkList").addEventListener("click", e => {
   const a = e.target.closest(".lkall"); if (a) { const p = (LK.products || []).find(x => x.id === a.dataset.id); (p?.options || []).forEach(o => lkSel.add(o.id)); return renderLucky() }
