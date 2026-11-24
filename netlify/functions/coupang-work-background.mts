@@ -828,7 +828,7 @@ export async function createNew(job: any) {
     // B2B 업체 상품은 모아커머스 대신 업체에 정한 브랜드(없으면 '기타')
     if (job.vendorId) {
       const vv: any = await getStore({ name: "admin-vendors", consistency: "strong" }).get(String(job.vendorId), { type: "json" }).catch(() => null)
-      if (vv?.kind === "B2B") { job.brand = vv.brandName || "GENERIC"; body.manufacture = vv.brandName || "상세페이지 참조" } // 쿠팡: 브랜드가 없는 상품은 GENERIC
+      if (vv?.kind === "B2B") { job.brand = vv.brandName || "모아커머스"; body.manufacture = vv.brandName || "상세페이지 참조" } // 쿠팡: 브랜드가 없는 도매 상품도 판매자 브랜드(모아커머스)로 등록 (2026-11-24 사장님 결정)
     }
     body.brand = String(job.brand || "모아커머스")
     if (!body.manufacture) body.manufacture = body.brand
