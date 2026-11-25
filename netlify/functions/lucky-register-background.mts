@@ -82,9 +82,10 @@ function totalGram(nm: string) {
   return 0
 }
 // 사진 폴더에서 대표사진·상세 사진을 골라 우리 저장소에 복사한다
-async function gatherImages(origin: string, link: string, pname: string, keyBase: string, mainRe?: string, onlyRe?: string) {
+async function gatherImages(origin: string, link: string, pname: string, keyBase: string, mainRe?: string, onlyRe?: string, fileList?: any[]) {
   // onlyRe: 한 폴더에 여러 상품 사진이 섞여 있을 때 이 상품 사진만 쓴다 (예: 대봉만)
-  const files = (await driveFiles(link || "", pname)).filter((f: any) => !onlyRe || new RegExp(onlyRe).test(f.name))
+  // fileList: 업체가 폴더 대신 파일 링크로 준 사진 [{ id, name }]
+  const files = (fileList?.length ? fileList : await driveFiles(link || "", pname)).filter((f: any) => !onlyRe || new RegExp(onlyRe).test(f.name))
   if (!files.length) throw new Error("사진 폴더에서 이 상품 사진을 찾지 못했습니다.")
   // 이름에 썸네일·대표가 있으면 대표사진 (job 에서 대표사진 파일 이름을 정해 줄 수도 있음). 나머지는 세로로 긴 것(상세페이지)과 일반 사진으로 나눈다
   let thumb = (mainRe && files.find((f) => new RegExp(mainRe).test(f.name))) || files.find((f) => /썸네일|대표|메인/.test(f.name))
@@ -135,8 +136,11 @@ export default async (req: Request) => {
       for (const [pid, d] of Object.entries(st.done) as any) {
         if (!d.ok || d.shipKey === key || Date.now() - started > 11 * 60e3) continue
         if (only.length && !only.includes(String(d.sellerProductId))) continue
+        if ((job.skipIds || []).includes(pid)) continue
         try {
-          const cp: any = await getProduct(String(d.sellerProductId))
+          // 등급별로 나눠 올린 상품(sellerProductIds 여러 개)도 모두 바꾼다
+          for (const spid of (d.sellerProductIds?.length ? d.sellerProductIds : [d.sellerProductId]).map(String)) {
+          const cp: any = await getProduct(spid)
           for (const x of cp.items || []) {
             x.outboundShippingTimeDay = days
             if (html) {
@@ -147,6 +151,7 @@ export default async (req: Request) => {
           cp.requested = true
           const r: any = await call("PUT", "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products", "", cp)
           if (!/SUCCESS/i.test(String(r?.code || ""))) throw new Error(JSON.stringify(r).slice(0, 220))
+          }
           d.shipDays = days; d.shipKey = key; delete d.shipError
         } catch (e: any) { d.shipError = String(e?.message || e).slice(0, 220) }
         await save()
@@ -236,7 +241,8 @@ export default async (req: Request) => {
         const optNames = g.idx.map((i) => allNames[i]), gopts = g.idx.map((i) => opts[i])
         const gc: any = (g as any).c
         const pname = gc ? `${gc.name || name}` : g.suffix ? `${name} ${g.suffix}` : name
-        const { mainImage, contentImages } = gc ? await gatherImages(origin, gc.folder, pname, `lk-${id}-${groups.indexOf(g)}`, gc.main, gc.only) : (img0 as any)
+        // gc.mainUrl·gc.contentUrls: 우리가 직접 준비해 둔 사진 주소를 그대로 쓴다 (예: 딸기)
+        const { mainImage, contentImages } = gc?.mainUrl ? { mainImage: gc.mainUrl, contentImages: gc.contentUrls || [] } : gc ? await gatherImages(origin, gc.folder, pname, `lk-${id}-${groups.indexOf(g)}`, gc.main, gc.only, gc.files) : (img0 as any)
         const gr: Record<string, number> = gc?.grams || {}
         const gramOf = (n: string) => { const k = Object.keys(gr).find((x) => n.includes(x)); return k ? gr[k] : pieceGram(n) || totalGram(n) }
         const jobId = `lk-${id}-${Date.now()}`
