@@ -7,4 +7,5 @@ export default async () => {
   const base = Netlify.env.get("URL") || "https://volqavo.com"
   await fetch(base + "/.netlify/functions/lucky-watch-background", { method: "POST", headers: { "x-internal": internalKey() }, body: "{}" })
 }
-export const config: Config = { schedule: "0 15 * * *" }
+// 2026-11-25 오너 요청으로 자동 실행 중지(품절은 오너가 직접 알려 줌). 다시 켜려면 아래 주석을 푼다.
+// export const config: Config = { schedule: "0 15 * * *" }
