@@ -2,7 +2,7 @@
 import { getStore } from "@netlify/blobs"
 import { internalKey } from "./_lib/auth.mts"
 import { getProduct, call } from "./_lib/coupang.mts"
-const RX: [RegExp, string][] = [[/제주\s?레몬/g, "국내산 레몬"], [/국산\s*\(\s*제주[^)]*\)/g, "국산"], [/제주산/g, "국내산"], [/제주특별자치도/g, "국내산"]]
+const RX: [RegExp, string][] = [[/제주\s?레몬/g, "국내산 레몬"], [/국산\s*\(\s*제주[^)]*\)/g, "국산"], [/제주산/g, "국내산"], [/제주특별자치도/g, "국내산"], [/제주\s?과일/g, "국산 과일"], [/제주특산물/g, "무농약레몬"]]
 export default async (req: Request) => {
   const u = new URL(req.url)
   const tok = Netlify.env.get("ONETIME_TOKEN") || ""
@@ -21,6 +21,7 @@ export default async (req: Request) => {
         out.products.push({ sp, name: p.sellerProductName, found: found.slice(0, 20), count: found.length })
         if (a === "apply" && found.length) {
           const np = JSON.parse(s); np.requested = true
+          for (const it of np.items || []) if (Array.isArray(it.searchTags)) it.searchTags = [...new Set(it.searchTags)]
           const r: any = await call("PUT", "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products", "", np)
           out.products[out.products.length - 1].result = String(r?.code || r?.message || "").slice(0, 120)
         }
