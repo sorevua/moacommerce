@@ -47,6 +47,7 @@ export default async () => {
   try { console.log("lucky sync", await syncLuckyOrders()) } catch (err) { console.error("lucky sync", err) }
 }
 
-export const config: Config = {
-  schedule: "*/30 * * * *",
-}
+// 2026-11-25 오너 요청으로 자동 실행 중지(넷리파이 크레딧 절약). 다시 켜려면 아래 주석을 푼다.
+// export const config: Config = {
+//   schedule: "*/30 * * * *",
+// }

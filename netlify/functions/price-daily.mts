@@ -5,4 +5,5 @@ export default async () => {
   const base = Netlify.env.get("URL") || "https://volqavo.com"
   await fetch(base + "/.netlify/functions/price-run-background", { method: "POST", headers: { "x-internal": internalKey() }, body: "{}" })
 }
-export const config: Config = { schedule: "37 20 * * *" }
+// 2026-11-25 오너 요청으로 자동 실행 중지(넷리파이 크레딧 절약). 다시 켜려면 아래 주석을 푼다.
+// export const config: Config = { schedule: "37 20 * * *" }
