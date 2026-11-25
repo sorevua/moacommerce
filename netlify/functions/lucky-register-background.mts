@@ -82,8 +82,9 @@ function totalGram(nm: string) {
   return 0
 }
 // 사진 폴더에서 대표사진·상세 사진을 골라 우리 저장소에 복사한다
-async function gatherImages(origin: string, link: string, pname: string, keyBase: string, mainRe?: string) {
-  const files = await driveFiles(link || "", pname)
+async function gatherImages(origin: string, link: string, pname: string, keyBase: string, mainRe?: string, onlyRe?: string) {
+  // onlyRe: 한 폴더에 여러 상품 사진이 섞여 있을 때 이 상품 사진만 쓴다 (예: 대봉만)
+  const files = (await driveFiles(link || "", pname)).filter((f: any) => !onlyRe || new RegExp(onlyRe).test(f.name))
   if (!files.length) throw new Error("사진 폴더에서 이 상품 사진을 찾지 못했습니다.")
   // 이름에 썸네일·대표가 있으면 대표사진 (job 에서 대표사진 파일 이름을 정해 줄 수도 있음). 나머지는 세로로 긴 것(상세페이지)과 일반 사진으로 나눈다
   let thumb = (mainRe && files.find((f) => new RegExp(mainRe).test(f.name))) || files.find((f) => /썸네일|대표|메인/.test(f.name))
@@ -235,7 +236,7 @@ export default async (req: Request) => {
         const optNames = g.idx.map((i) => allNames[i]), gopts = g.idx.map((i) => opts[i])
         const gc: any = (g as any).c
         const pname = gc ? `${gc.name || name}` : g.suffix ? `${name} ${g.suffix}` : name
-        const { mainImage, contentImages } = gc ? await gatherImages(origin, gc.folder, pname, `lk-${id}-${groups.indexOf(g)}`, gc.main) : (img0 as any)
+        const { mainImage, contentImages } = gc ? await gatherImages(origin, gc.folder, pname, `lk-${id}-${groups.indexOf(g)}`, gc.main, gc.only) : (img0 as any)
         const gr: Record<string, number> = gc?.grams || {}
         const gramOf = (n: string) => { const k = Object.keys(gr).find((x) => n.includes(x)); return k ? gr[k] : pieceGram(n) || totalGram(n) }
         const jobId = `lk-${id}-${Date.now()}`
