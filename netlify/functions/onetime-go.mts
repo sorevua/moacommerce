@@ -23,8 +23,9 @@ export default async (req: Request) => {
   const bg = (fn: string, body: any) => fetch(`${u.origin}/.netlify/functions/${fn}`, { method: "POST", headers: { "x-internal": internalKey(), "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.status)
   try {
     const reg: any = (await st.get("lucky-reg", { type: "json" })) || { done: {} }
+    if (a === "names") out.names = ((await luckyProducts(true)).data?.products || []).map((p: any) => p.name).filter((n: string) => /사과|시나노|부사|청송/.test(n))
     if (a === "creg") {
-      const ps = ((await luckyProducts(true)).data?.products || []).filter((x: any) => /청송/.test(x.name) && /농협/.test(x.name))
+      const ps = ((await luckyProducts(true)).data?.products || []).filter((x: any) => new RegExp(u.searchParams.get("q") || "청송").test(x.name))
       out.ps = ps.map((p: any) => ({ id: p.id, name: p.name, already: !!reg.done[p.id]?.ok, opts: (p.options || []).map((o: any) => `${o.name} ${o.prefixName || ""}|${o.price}+${o.shippingFee}|${o.status}`) }))
       const ids = ps.filter((p: any) => !reg.done[p.id]?.ok).map((p: any) => p.id)
       if (ids.length && u.searchParams.get("go")) out.started = await bg("lucky-register-background", {
