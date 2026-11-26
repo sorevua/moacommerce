@@ -18,7 +18,7 @@ export default async (req: Request) => {
       if (!out.p.already) out.started = await bg("lucky-register-background", {
         retry: true, batch: 1, productIds: [p.id], noRemote: [p.id],
         rename: { [p.id]: [["5단\\s*$", "5단 11.5kg내외 (1단 2.3kg내외)"], ["3단\\s*$", "3단 6.9kg내외 (1단 2.3kg내외)"], ["2단\\s*$", "2단 4.6kg내외 (1단 2.3kg내외)"], ["1단\\s*$", "1단 2.3kg내외"]] },
-        parts: { [p.id]: [{ suffix: "A", name: "국내산 알타리무 총각무", match: ".", main: "썸네일", facts: "국내산 알타리무(총각무). 1단 2.3kg 내외. 총각김치·김장용. 제주·도서산간 배송 불가.", files: [{ id: "1Ix8kkYyYZ3mP8kfvD1QkGHA4I5bkHcT5", name: "알타리무 썸네일.png" }, { id: "1UiIGBg8ze7PK-qy_fPbjyA_tsiJx_jIH", name: "알타리무_상세.jpg" }] }] },
+        parts: { [p.id]: [{ suffix: "A", name: "국내산 알타리무 총각무 김장용 총각김치 2.3kg", match: ".", main: "썸네일", facts: "국내산 알타리무(총각무). 1단 2.3kg 내외. 총각김치·김장용. 제주·도서산간 배송 불가.", files: [{ id: "1Ix8kkYyYZ3mP8kfvD1QkGHA4I5bkHcT5", name: "알타리무 썸네일.png" }, { id: "1UiIGBg8ze7PK-qy_fPbjyA_tsiJx_jIH", name: "알타리무_상세.jpg" }] }] },
         templateId: "16419735114", requestApproval: true, shipDays: 1, outboundShippingPlaceCode: 25572192, returnCenterCode: "1002729419", deliveryCompanyCode: "CJGLS" })
     }
     if (a === "cst") { out.running = reg.running; out.error = reg.error; out.items = Object.values<any>(reg.done).filter((d) => /알타리/.test(String(d.name))) }
