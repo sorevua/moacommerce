@@ -245,7 +245,9 @@ export default async (req: Request) => {
         const gc: any = (g as any).c
         const pname = gc ? `${gc.name || name}` : g.suffix ? `${name} ${g.suffix}` : name
         // gc.mainUrl·gc.contentUrls: 우리가 직접 준비해 둔 사진 주소를 그대로 쓴다 (예: 딸기)
-        const { mainImage, contentImages } = gc?.mainUrl ? { mainImage: gc.mainUrl, contentImages: gc.contentUrls || [] } : gc ? await gatherImages(origin, gc.folder, pname, `lk-${id}-${groups.indexOf(g)}`, gc.main, gc.only, gc.files) : (img0 as any)
+        // gc.mainUrl 만 있고 사진 파일도 있으면: 상세는 파일에서 가져오고 대표사진만 우리 것으로 바꾼다 (예: 로고를 지운 대표사진)
+        const gi: any = gc && (gc.files || gc.folder) && !gc.contentUrls ? await gatherImages(origin, gc.folder, pname, `lk-${id}-${groups.indexOf(g)}`, gc.main, gc.only, gc.files) : null
+        const { mainImage, contentImages } = gc?.mainUrl ? { mainImage: gc.mainUrl, contentImages: gc.contentUrls || gi?.contentImages || [] } : gi || (img0 as any)
         const gr: Record<string, number> = gc?.grams || {}
         const gramOf = (n: string) => { const k = Object.keys(gr).find((x) => n.includes(x)); return k ? gr[k] : pieceGram(n) || totalGram(n) }
         const jobId = `lk-${id}-${Date.now()}`
