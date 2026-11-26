@@ -226,7 +226,10 @@ export default async (req: Request) => {
         const gg: Record<string, number> = (job.gradeGrams && job.gradeGrams[id]) || {}
         const gks = Object.keys(gg).sort((a, b) => b.length - a.length)
         const withGram = (n: string) => { if (pieceGram(n)) return n; const k = gks.find((x) => n.includes(x)); return k ? n.replace(k, `${k}(${gg[k]}g내외)`) : n }
-        const allNames = opts.map((o: any) => withGram(clean(`${o.name}${o.prefixName ? " " + o.prefixName : ""}`)).slice(0, 60))
+        // job.rename[상품ID] = [[정규식, 바꿀 이름], ...] : 옵션마다 총 무게가 이름에 드러나게 고친다 (예: "(1단 2.3kg내외) 2단" → "2단 4.6kg내외"). 쿠팡은 무게 값이 같은 옵션을 '중복'으로 거절한다
+        const rn: [string, string][] = (job.rename && job.rename[id]) || []
+        const renamed = (n: string) => { const r = rn.find((x) => new RegExp(x[0]).test(n)); return r ? r[1] : n }
+        const allNames = opts.map((o: any) => renamed(withGram(clean(`${o.name}${o.prefixName ? " " + o.prefixName : ""}`))).slice(0, 60))
         // 2026-11-18: 등급만 다르고 무게가 같은 옵션(대 1kg / 특 1kg, 청갓 1단 / 홍갓 1단)은 쿠팡이 '중복된 옵션값'으로 거절한다
         //   → job.split 이면 등급별로 상품을 나눠 등록한다 (상품명 뒤에 등급을 붙임). 이미 등록된 등급은 다시 하지 않는다
         const gkey = (n: string) => n.replace(/\([^)]*\)/g, " ").replace(/\d+(?:\.\d+)?\s*(?:kg|g|과|입|단|팩|봉|개|박스)/gi, " ").replace(/\s+/g, " ").trim()
