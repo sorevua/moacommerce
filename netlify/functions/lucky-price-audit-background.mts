@@ -1,6 +1,6 @@
 // 행운 상품 쿠팡 판매가 점검 (2026-11-25 사장님 요청: 손해는 절대 안 됨)
 //  - 쿠팡의 지금 판매가(자동가격조정으로 내려간 값 포함)를 옵션마다 읽는다
-//  - 공급가 기준 마진 15% 판매가보다 낮으면 그 가격으로 올린다. 높은 가격은 건드리지 않는다 (내리지 않음)
+//  - 공급가 기준 마진 10%(위너 하한) 판매가보다 낮으면 그 가격으로 올린다. 높은 가격은 건드리지 않는다 (내리지 않음)
 import { getStore } from "@netlify/blobs"
 import { isInternal, isLoggedIn } from "./_lib/auth.mts"
 import { getInventory, changePrice } from "./_lib/coupang.mts"
@@ -31,7 +31,8 @@ export default async (req: Request) => {
       const x = list[i++]
       try {
         const inv: any = await getInventory(String(x.coupangItemId))
-        const cur = Number(inv?.salePrice || 0), need = priceOf(Number(x.supplyPrice), cfg)
+        // 2026-11-28 사장님 결정: 기본 15%, 위너를 잡으려고 내려간 가격은 마진 10%까지 허용 → 10% 밑일 때만 10% 가격으로 올린다
+        const cur = Number(inv?.salePrice || 0), need = priceOf(Number(x.supplyPrice), { ...(cfg || {}), marginRate: 0.10, sameMarketPrice: 0 })
         if (!cur) throw new Error("판매가를 읽지 못함")
         if (cur < need) {
           // 수수료(부가세 포함)를 떼고 공급가보다 적게 남으면 '손해'
